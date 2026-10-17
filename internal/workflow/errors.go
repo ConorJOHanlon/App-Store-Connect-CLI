@@ -16,7 +16,8 @@ var (
 	// with the requested workflow, file, definition, or parameters.
 	ErrResumeRejected = errors.New("resume run rejected")
 	// ErrCommandFailed indicates a user-defined run step or hook command that
-	// did not succeed, including a step whose declared outputs were invalid.
+	// did not succeed, including a step that exceeded its workflow-defined
+	// timeout or whose declared outputs were invalid.
 	ErrCommandFailed = errors.New("workflow command failed")
 )
 

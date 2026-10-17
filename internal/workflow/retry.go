@@ -207,16 +207,16 @@ func classifyAttemptFailure(ctx context.Context, attemptContextErr, runErr error
 }
 
 // attemptFailureError keeps the rendered step error and records why the final
-// attempt failed: a per-attempt timeout matches context.DeadlineExceeded, a
-// canceled run matches the caller's context error, and a failed command
-// matches ErrCommandFailed.
+// attempt failed: a canceled run matches the caller's context error, and a
+// failed command or a command that exceeded its workflow-defined timeout
+// matches ErrCommandFailed. A step timeout deliberately does not match
+// context.DeadlineExceeded: that would attach the ASC_TIMEOUT request hint,
+// which does not control the step's deadline.
 func attemptFailureError(ctx context.Context, err error, failureReason string) error {
 	switch failureReason {
-	case "timeout":
-		return markError(err, context.DeadlineExceeded)
 	case "canceled":
 		return markError(err, ctx.Err())
-	case "command_failed":
+	case "command_failed", "timeout":
 		return markError(err, ErrCommandFailed)
 	default:
 		return err

@@ -22,6 +22,7 @@ func TestRunWorkflowRunFailuresAreClassified(t *testing.T) {
 		args           []string
 		resumeFrom     string
 		wantStderr     string
+		rejectStderr   string
 		wantResult     bool
 		wantOutcome    telemetry.OutcomeKind
 		wantDiagnostic shared.DiagnosticCode
@@ -73,12 +74,14 @@ func TestRunWorkflowRunFailuresAreClassified(t *testing.T) {
 			wantDiagnostic: shared.DiagnosticDependencyFailed,
 		},
 		{
-			name:        "run step timeout without retry",
-			file:        twoWorkflows,
-			args:        []string{"slow"},
-			wantStderr:  "Error: workflow: slow step 1: step timed out after 100ms\n",
-			wantResult:  true,
-			wantOutcome: telemetry.OutcomeTransportError,
+			name:           "run step timeout without retry",
+			file:           twoWorkflows,
+			args:           []string{"slow"},
+			wantStderr:     "Error: workflow: slow step 1: step timed out after 100ms\n",
+			rejectStderr:   "ASC_TIMEOUT",
+			wantResult:     true,
+			wantOutcome:    telemetry.OutcomeExpectedNegative,
+			wantDiagnostic: shared.DiagnosticDependencyFailed,
 		},
 		{
 			name:           "unknown workflow",
@@ -191,6 +194,9 @@ func TestRunWorkflowRunFailuresAreClassified(t *testing.T) {
 
 			if !strings.Contains(stderr, test.wantStderr) {
 				t.Fatalf("stderr = %q, want %q", stderr, test.wantStderr)
+			}
+			if test.rejectStderr != "" && strings.Contains(stderr, test.rejectStderr) {
+				t.Fatalf("stderr = %q, must not contain %q", stderr, test.rejectStderr)
 			}
 			if test.wantResult {
 				var result struct {
