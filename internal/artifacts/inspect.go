@@ -9,10 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"path"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/infoplist"
@@ -171,11 +173,19 @@ func (e invalidArchiveError) Error() string        { return e.err.Error() }
 func (e invalidArchiveError) Unwrap() error        { return e.err }
 func (e invalidArchiveError) Is(target error) bool { return target == ErrInvalidArchive }
 
+// markInvalidArchive marks err unless it carries an operational read failure
+// from the source, such as EIO, which says nothing about the archive itself.
 func markInvalidArchive(err error) error {
-	if err == nil {
-		return nil
+	if err == nil || isOperationalReadError(err) {
+		return err
 	}
 	return invalidArchiveError{err: err}
+}
+
+func isOperationalReadError(err error) bool {
+	var pathErr *fs.PathError
+	var errno syscall.Errno
+	return errors.As(err, &pathErr) || errors.As(err, &errno)
 }
 
 func inspectIPAVerifying(source io.ReaderAt, size int64, includeEntitlements, includeProfile bool, policy *trustPolicy) (IPAManifest, error) {
