@@ -71,11 +71,6 @@ func AmbiguousError(kind, flag, selector string, candidates []AmbiguousCandidate
 // asc. The message and exit code are unchanged.
 func (e *AmbiguousSelectionError) ValidationFailure() bool { return true }
 
-// Diagnostic records invalid_input on the flag that accepts one candidate.
-func (e *AmbiguousSelectionError) Diagnostic() Diagnostic {
-	return Diagnostic{Code: DiagnosticInvalidInput, Parameter: strings.TrimSpace(e.Flag)}
-}
-
 // Error renders the header, the bounded candidate table, and the hint.
 func (e *AmbiguousSelectionError) Error() string {
 	var b strings.Builder
