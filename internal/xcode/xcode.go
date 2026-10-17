@@ -1613,6 +1613,11 @@ func formatCommandOutputError(ctx context.Context, err error, output formattedCo
 		}
 		return fmt.Errorf("%s %s timed out or was canceled: %w", commandLabel, action, ctxErr)
 	}
+	if !isToolExitFailure(err) {
+		// asc could not run the tool to completion (startup, output, or cleanup
+		// failed), so this is not the tool reporting a problem with the input.
+		return formatCommandRunnerError(err, detail, output, action, commandLabel, preserveProcessError)
+	}
 	if detail != "" {
 		message := fmt.Sprintf("%s %s failed: %s", commandLabel, action, detail)
 		if output.Truncated() {
@@ -1624,6 +1629,39 @@ func formatCommandOutputError(ctx context.Context, err error, output formattedCo
 		return &CommandFailureError{message: fmt.Sprintf("%s: %v", message, err), err: err}
 	}
 	return &CommandFailureError{message: fmt.Sprintf("%s %s failed: %v", commandLabel, action, err), err: err}
+}
+
+// isToolExitFailure reports whether err only records a tool exiting with a
+// non-zero status. A startup, output, or process-group cleanup failure, alone
+// or joined with the exit, is an asc execution failure instead.
+func isToolExitFailure(err error) bool {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		parts := joined.Unwrap()
+		for _, part := range parts {
+			if !isToolExitFailure(part) {
+				return false
+			}
+		}
+		return len(parts) > 0
+	}
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && exitErr.ExitCode() > 0
+}
+
+func formatCommandRunnerError(err error, detail string, output formattedCommandOutput, action string, commandLabel string, preserveProcessError bool) error {
+	if detail != "" {
+		if output.Truncated() {
+			if preserveProcessError {
+				return fmt.Errorf("%s %s failed (%s): %s: %w", commandLabel, action, output.TruncationDescription(), detail, err)
+			}
+			return fmt.Errorf("%s %s failed (%s): %s", commandLabel, action, output.TruncationDescription(), detail)
+		}
+		if preserveProcessError {
+			return fmt.Errorf("%s %s failed: %s: %w", commandLabel, action, detail, err)
+		}
+		return fmt.Errorf("%s %s failed: %s", commandLabel, action, detail)
+	}
+	return fmt.Errorf("%s %s failed: %w", commandLabel, action, err)
 }
 
 const (
