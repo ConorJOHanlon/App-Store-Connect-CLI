@@ -351,3 +351,37 @@ func TestIsAmbiguousSelectionDetectsStableSelectorAmbiguity(t *testing.T) {
 		t.Fatal("unwrapping must not break the existing sentinel")
 	}
 }
+
+func TestAmbiguousSelectionsAreValidationFailuresWithFlagDiagnostic(t *testing.T) {
+	tests := []struct {
+		name          string
+		err           error
+		wantParameter string
+	}{
+		{
+			name: "default version wrapper",
+			err: fmt.Errorf("localizations list: %w", &AmbiguousDefaultAppStoreVersionError{
+				AppID:      "app-1",
+				Source:     "editable",
+				Candidates: []DefaultAppStoreVersion{{ID: "ver-ios", Platform: "IOS"}, {ID: "ver-mac", Platform: "MAC_OS"}},
+			}),
+			wantParameter: "--platform",
+		},
+		{
+			name:          "no disambiguating flag",
+			err:           &AmbiguousSelectionError{Kind: "signing identity", Description: `"Apple Distribution"`},
+			wantParameter: "",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if !IsValidationError(test.err) {
+				t.Fatalf("IsValidationError(%v) = false, want true", test.err)
+			}
+			diagnostic, ok := DiagnosticFromError(test.err)
+			if !ok || diagnostic.Code != DiagnosticInvalidInput || diagnostic.Parameter != test.wantParameter {
+				t.Fatalf("DiagnosticFromError() = %+v, %t; want invalid_input on %q", diagnostic, ok, test.wantParameter)
+			}
+		})
+	}
+}
