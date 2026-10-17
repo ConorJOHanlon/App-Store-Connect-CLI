@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/rootfs"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/telemetry"
 )
 
@@ -98,12 +99,24 @@ func TestRunLocalInputFileFailuresAreClassified(t *testing.T) {
 	missingProfile := filepath.Join(dir, "missing.mobileprovision")
 	junkProfile := writeLocalInputFixture(t, filepath.Join(dir, "junk.mobileprovision"), "junk\n", 0o600)
 	emptyProfile := writeLocalInputFixture(t, filepath.Join(dir, "empty.mobileprovision"), "", 0o600)
+	missingIPA := filepath.Join(dir, "missing.ipa")
+	junkIPA := writeLocalInputFixture(t, filepath.Join(dir, "junk.ipa"), "junk\n", 0o600)
+	missingPKG := filepath.Join(dir, "missing.pkg")
 
 	openErr := func(path string) string {
 		t.Helper()
 		_, err := os.Open(path)
 		if err == nil {
 			t.Fatalf("os.Open(%q) unexpectedly succeeded", path)
+		}
+		return err.Error()
+	}
+	rootOpenErr := func(path string) string {
+		t.Helper()
+		file, err := rootfs.OpenFile(path)
+		if err == nil {
+			_ = file.Close()
+			t.Fatalf("rootfs.OpenFile(%q) unexpectedly succeeded", path)
 		}
 		return err.Error()
 	}
@@ -128,6 +141,30 @@ func TestRunLocalInputFileFailuresAreClassified(t *testing.T) {
 			args:             []string{"profiles", "local", "install", "--path", emptyProfile},
 			wantStderrPrefix: "Error: profiles local install: profile file is empty\n",
 			wantDiagnosis:    shared.DiagnosticFileInvalidFormat,
+			wantParameter:    "--path",
+		},
+		{
+			name:             "ipa-info missing path",
+			args:             []string{"ipa-info", "--path", missingIPA},
+			wantStderrPrefix: "Error: ipa-info: " + rootOpenErr(missingIPA) + "\n",
+			wantReceipt:      true,
+			wantDiagnosis:    shared.DiagnosticFileNotFound,
+			wantParameter:    "--path",
+		},
+		{
+			name:             "ipa-info undecodable path",
+			args:             []string{"ipa-info", "--path", junkIPA},
+			wantStderrPrefix: "Error: ipa-info: open IPA: truncated ZIP directory\n",
+			wantReceipt:      true,
+			wantDiagnosis:    shared.DiagnosticFileInvalidFormat,
+			wantParameter:    "--path",
+		},
+		{
+			name:             "pkg-info missing path",
+			args:             []string{"pkg-info", "--path", missingPKG},
+			wantStderrPrefix: "Error: pkg-info: " + rootOpenErr(missingPKG) + "\n",
+			wantReceipt:      true,
+			wantDiagnosis:    shared.DiagnosticFileNotFound,
 			wantParameter:    "--path",
 		},
 	}
