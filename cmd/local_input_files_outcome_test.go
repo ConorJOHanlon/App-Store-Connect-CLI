@@ -99,6 +99,9 @@ func TestRunLocalInputFileFailuresAreClassified(t *testing.T) {
 	missingProfile := filepath.Join(dir, "missing.mobileprovision")
 	junkProfile := writeLocalInputFixture(t, filepath.Join(dir, "junk.mobileprovision"), "junk\n", 0o600)
 	emptyProfile := writeLocalInputFixture(t, filepath.Join(dir, "empty.mobileprovision"), "", 0o600)
+	missingScreenshot := filepath.Join(dir, "missing.png")
+	screenshot := writeLocalInputFixture(t, filepath.Join(dir, "screen.png"), "junk\n", 0o600)
+	missingConfig := filepath.Join(dir, "missing.yaml")
 	missingIPA := filepath.Join(dir, "missing.ipa")
 	junkIPA := writeLocalInputFixture(t, filepath.Join(dir, "junk.ipa"), "junk\n", 0o600)
 	missingPKG := filepath.Join(dir, "missing.pkg")
@@ -108,6 +111,22 @@ func TestRunLocalInputFileFailuresAreClassified(t *testing.T) {
 		_, err := os.Open(path)
 		if err == nil {
 			t.Fatalf("os.Open(%q) unexpectedly succeeded", path)
+		}
+		return err.Error()
+	}
+	lstatErr := func(path string) string {
+		t.Helper()
+		_, err := os.Lstat(path)
+		if err == nil {
+			t.Fatalf("os.Lstat(%q) unexpectedly succeeded", path)
+		}
+		return err.Error()
+	}
+	statErr := func(path string) string {
+		t.Helper()
+		_, err := os.Stat(path)
+		if err == nil {
+			t.Fatalf("os.Stat(%q) unexpectedly succeeded", path)
 		}
 		return err.Error()
 	}
@@ -142,6 +161,35 @@ func TestRunLocalInputFileFailuresAreClassified(t *testing.T) {
 			wantStderrPrefix: "Error: profiles local install: profile file is empty\n",
 			wantDiagnosis:    shared.DiagnosticFileInvalidFormat,
 			wantParameter:    "--path",
+		},
+		{
+			name:             "screenshots frame missing input",
+			args:             []string{"screenshots", "frame", "--input", missingScreenshot},
+			wantStderrPrefix: "Error: screenshots frame: read input screenshot: " + lstatErr(missingScreenshot) + "\n",
+			wantDiagnosis:    shared.DiagnosticFileNotFound,
+			wantParameter:    "--input",
+		},
+		{
+			name:             "screenshots frame resume missing input",
+			args:             []string{"screenshots", "frame", "--input", missingScreenshot, "--resume"},
+			isolatedWorkDir:  true,
+			wantStderrPrefix: "Error: screenshots frame: snapshot input: open frame input: ",
+			wantDiagnosis:    shared.DiagnosticFileNotFound,
+			wantParameter:    "--input",
+		},
+		{
+			name:             "screenshots frame missing config",
+			args:             []string{"screenshots", "frame", "--config", missingConfig},
+			wantStderrPrefix: "Error: screenshots frame: read config file: " + statErr(missingConfig) + "\n",
+			wantDiagnosis:    shared.DiagnosticFileNotFound,
+			wantParameter:    "--config",
+		},
+		{
+			name:             "screenshots frame without koubou",
+			args:             []string{"screenshots", "frame", "--input", screenshot, "--output-dir", filepath.Join(dir, "framed")},
+			env:              map[string]string{"PATH": t.TempDir()},
+			wantStderrPrefix: "Error: screenshots frame: kou binary not found; install pinned Koubou ",
+			wantDiagnosis:    shared.DiagnosticDependencyFailed,
 		},
 		{
 			name:             "ipa-info missing path",
