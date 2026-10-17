@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -120,6 +121,10 @@ func TestRunXcodeLocalFailuresAreClassified(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("ASC_APP_ID", "")
 			if test.fakeXcode {
+				// asc refuses Xcode tool commands off macOS before running them.
+				if runtime.GOOS != "darwin" {
+					t.Skip("xcodebuild failures require macOS")
+				}
 				installFailingXcodebuild(t)
 			}
 
