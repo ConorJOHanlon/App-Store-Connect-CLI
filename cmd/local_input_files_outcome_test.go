@@ -83,27 +83,31 @@ func runLocalInputOutcomeCase(t *testing.T, test localInputOutcomeCase) {
 	}
 }
 
-func writeLocalInputFixture(t *testing.T, path string, data string, mode os.FileMode) string {
+// writeLocalInputFixture writes a private (0600) fixture file.
+func writeLocalInputFixture(t *testing.T, path string, data string) string {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(data), mode); err != nil {
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		t.Fatalf("WriteFile(%q) error: %v", path, err)
-	}
-	if err := os.Chmod(path, mode); err != nil {
-		t.Fatalf("Chmod(%q) error: %v", path, err)
 	}
 	return path
 }
 
 func TestRunLocalInputFileFailuresAreClassified(t *testing.T) {
 	dir := t.TempDir()
+	// --install-dir is required off macOS; the failures under test happen
+	// before anything is written there.
+	installDir := filepath.Join(dir, "installed")
+	if err := os.Mkdir(installDir, 0o700); err != nil {
+		t.Fatalf("Mkdir(%q) error: %v", installDir, err)
+	}
 	missingProfile := filepath.Join(dir, "missing.mobileprovision")
-	junkProfile := writeLocalInputFixture(t, filepath.Join(dir, "junk.mobileprovision"), "junk\n", 0o600)
-	emptyProfile := writeLocalInputFixture(t, filepath.Join(dir, "empty.mobileprovision"), "", 0o600)
+	junkProfile := writeLocalInputFixture(t, filepath.Join(dir, "junk.mobileprovision"), "junk\n")
+	emptyProfile := writeLocalInputFixture(t, filepath.Join(dir, "empty.mobileprovision"), "")
 	missingScreenshot := filepath.Join(dir, "missing.png")
-	screenshot := writeLocalInputFixture(t, filepath.Join(dir, "screen.png"), "junk\n", 0o600)
+	screenshot := writeLocalInputFixture(t, filepath.Join(dir, "screen.png"), "junk\n")
 	missingConfig := filepath.Join(dir, "missing.yaml")
 	missingIPA := filepath.Join(dir, "missing.ipa")
-	junkIPA := writeLocalInputFixture(t, filepath.Join(dir, "junk.ipa"), "junk\n", 0o600)
+	junkIPA := writeLocalInputFixture(t, filepath.Join(dir, "junk.ipa"), "junk\n")
 	missingPKG := filepath.Join(dir, "missing.pkg")
 
 	openErr := func(path string) string {
@@ -143,21 +147,21 @@ func TestRunLocalInputFileFailuresAreClassified(t *testing.T) {
 	tests := []localInputOutcomeCase{
 		{
 			name:             "profiles local install missing path",
-			args:             []string{"profiles", "local", "install", "--path", missingProfile},
+			args:             []string{"profiles", "local", "install", "--path", missingProfile, "--install-dir", installDir},
 			wantStderrPrefix: "Error: profiles local install: open input: " + openErr(missingProfile) + "\n",
 			wantDiagnosis:    shared.DiagnosticFileNotFound,
 			wantParameter:    "--path",
 		},
 		{
 			name:             "profiles local install undecodable path",
-			args:             []string{"profiles", "local", "install", "--path", junkProfile},
+			args:             []string{"profiles", "local", "install", "--path", junkProfile, "--install-dir", installDir},
 			wantStderrPrefix: "Error: profiles local install: decode embedded plist: ",
 			wantDiagnosis:    shared.DiagnosticFileInvalidFormat,
 			wantParameter:    "--path",
 		},
 		{
 			name:             "profiles local install empty path",
-			args:             []string{"profiles", "local", "install", "--path", emptyProfile},
+			args:             []string{"profiles", "local", "install", "--path", emptyProfile, "--install-dir", installDir},
 			wantStderrPrefix: "Error: profiles local install: profile file is empty\n",
 			wantDiagnosis:    shared.DiagnosticFileInvalidFormat,
 			wantParameter:    "--path",

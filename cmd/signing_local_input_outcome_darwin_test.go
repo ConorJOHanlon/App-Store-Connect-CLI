@@ -53,17 +53,28 @@ func writeSigningLocalInputIdentity(t *testing.T, path, password string) string 
 	return path
 }
 
+// writeSigningInputFixture writes a fixture with an exact mode, so permission
+// checks see it regardless of the umask.
+func writeSigningInputFixture(t *testing.T, path, data string, mode os.FileMode) string {
+	t.Helper()
+	writeLocalInputFixture(t, path, data)
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatalf("Chmod(%q) error: %v", path, err)
+	}
+	return path
+}
+
 func TestRunSigningLocalInputFileFailuresAreClassified(t *testing.T) {
 	dir := t.TempDir()
 	missing := func(name string) string { return filepath.Join(dir, "missing-"+name) }
 	identity := writeSigningLocalInputIdentity(t, filepath.Join(dir, "valid.p12"), "right")
-	junkIdentity := writeLocalInputFixture(t, filepath.Join(dir, "junk.p12"), "junk\n", 0o600)
-	exposedIdentity := writeLocalInputFixture(t, filepath.Join(dir, "exposed.p12"), "junk\n", 0o644)
-	profile := writeLocalInputFixture(t, filepath.Join(dir, "junk.mobileprovision"), "junk\n", 0o644)
-	writableProfile := writeLocalInputFixture(t, filepath.Join(dir, "writable.mobileprovision"), "junk\n", 0o666)
-	rightPassword := writeLocalInputFixture(t, filepath.Join(dir, "right-password"), "right\n", 0o600)
-	wrongPassword := writeLocalInputFixture(t, filepath.Join(dir, "wrong-password"), "wrong\n", 0o600)
-	keychainPassword := writeLocalInputFixture(t, filepath.Join(dir, "keychain-password"), "keychain\n", 0o600)
+	junkIdentity := writeSigningInputFixture(t, filepath.Join(dir, "junk.p12"), "junk\n", 0o600)
+	exposedIdentity := writeSigningInputFixture(t, filepath.Join(dir, "exposed.p12"), "junk\n", 0o644)
+	profile := writeSigningInputFixture(t, filepath.Join(dir, "junk.mobileprovision"), "junk\n", 0o644)
+	writableProfile := writeSigningInputFixture(t, filepath.Join(dir, "writable.mobileprovision"), "junk\n", 0o666)
+	rightPassword := writeSigningInputFixture(t, filepath.Join(dir, "right-password"), "right\n", 0o600)
+	wrongPassword := writeSigningInputFixture(t, filepath.Join(dir, "wrong-password"), "wrong\n", 0o600)
+	keychainPassword := writeSigningInputFixture(t, filepath.Join(dir, "keychain-password"), "keychain\n", 0o600)
 	keychain := filepath.Join(dir, "release.keychain-db")
 
 	openErr := func(path string) string {
