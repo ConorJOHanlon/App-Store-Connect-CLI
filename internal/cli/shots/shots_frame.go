@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -483,12 +484,20 @@ func classifyFrameError(err error) error {
 	if inputErr.Input == screenshots.FrameInputConfig {
 		parameter = "--config"
 	}
-	code := shared.DiagnosticFileInvalidFormat
+	var code shared.DiagnosticCode
+	var pathErr *fs.PathError
+	var errno syscall.Errno
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		code = shared.DiagnosticFileNotFound
 	case errors.Is(err, fs.ErrPermission):
 		code = shared.DiagnosticFilePermissionDenied
+	case errors.As(err, &pathErr), errors.As(err, &errno):
+		// Any other filesystem failure, such as EIO, is operational and
+		// says nothing about the input file.
+		return err
+	default:
+		code = shared.DiagnosticFileInvalidFormat
 	}
 	return shared.WithDiagnostic(shared.NewValidationError(err), code, parameter)
 }
