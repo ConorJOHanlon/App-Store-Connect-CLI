@@ -263,7 +263,7 @@ func ExecuteScreenshotSetUpload[T any](ctx context.Context, opts ScreenshotSetUp
 		if opts.InvalidDeviceTypeIsUsage {
 			return zero, shared.UsageError(err.Error())
 		}
-		return zero, err
+		return zero, invalidDeviceTypeError(err)
 	}
 	apiDisplayType := asc.CanonicalScreenshotDisplayTypeForAPI(displayType)
 	files, err := CollectAssetFiles(trimmedPath)

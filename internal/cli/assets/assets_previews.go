@@ -164,7 +164,7 @@ Examples:
 
 			previewType, err := normalizePreviewType(deviceValue)
 			if err != nil {
-				return fmt.Errorf("video-previews upload: %w", err)
+				return invalidDeviceTypeError(fmt.Errorf("video-previews upload: %w", err))
 			}
 
 			files, err := collectAssetFiles(pathValue)

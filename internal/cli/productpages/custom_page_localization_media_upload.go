@@ -221,7 +221,7 @@ func executeCustomPagePreviewUpload(
 
 	previewType, err := assets.NormalizePreviewType(trimmedDeviceType)
 	if err != nil {
-		return nil, err
+		return nil, assets.InvalidDeviceTypeError(err)
 	}
 	files, err := collectCustomPageMediaFiles(trimmedPath)
 	if err != nil {

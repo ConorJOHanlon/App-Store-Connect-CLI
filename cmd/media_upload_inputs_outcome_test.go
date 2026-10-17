@@ -77,6 +77,13 @@ func TestRunMediaUploadInputFailuresAreClassified(t *testing.T) {
 			wantParameter:    "--path",
 		},
 		{
+			name:             "custom page screenshots unknown device type",
+			args:             []string{"product-pages", "custom-pages", "localizations", "screenshot-sets", "upload", "--localization-id", "LOC", "--path", junk, "--device-type", "NOT_A_DEVICE"},
+			wantStderrPrefix: "Error: custom-pages localizations screenshot-sets upload: ",
+			wantDiagnosis:    shared.DiagnosticInvalidInput,
+			wantParameter:    "--device-type",
+		},
+		{
 			name:             "treatment screenshots missing path",
 			args:             treatmentScreenshots(missing),
 			wantStderrPrefix: "Error: experiments treatments localizations screenshot-sets upload: " + lstatErr.Error() + "\n",
@@ -91,6 +98,13 @@ func TestRunMediaUploadInputFailuresAreClassified(t *testing.T) {
 			wantParameter:    "--path",
 		},
 		{
+			name:             "custom page previews unknown device type",
+			args:             []string{"product-pages", "custom-pages", "localizations", "preview-sets", "upload", "--localization-id", "LOC", "--path", junk, "--device-type", "NOT_A_DEVICE"},
+			wantStderrPrefix: "Error: custom-pages localizations preview-sets upload: ",
+			wantDiagnosis:    shared.DiagnosticInvalidInput,
+			wantParameter:    "--device-type",
+		},
+		{
 			name:             "video previews unsupported extension",
 			args:             videoPreviews(junk, "IPHONE_65"),
 			wantStderrPrefix: "Error: video-previews upload: unsupported preview file extension \".png\"; supported extensions are .mov, .m4v, and .mp4\n",
@@ -103,6 +117,13 @@ func TestRunMediaUploadInputFailuresAreClassified(t *testing.T) {
 			wantStderrPrefix: "Error: video-previews upload: " + lstatErr.Error() + "\n",
 			wantDiagnosis:    shared.DiagnosticFileNotFound,
 			wantParameter:    "--path",
+		},
+		{
+			name:             "video previews unknown device type",
+			args:             videoPreviews(junk, "NOT_A_DEVICE"),
+			wantStderrPrefix: "Error: video-previews upload: ",
+			wantDiagnosis:    shared.DiagnosticInvalidInput,
+			wantParameter:    "--device-type",
 		},
 		{
 			name:             "screenshots undecodable image",

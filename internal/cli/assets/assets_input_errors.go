@@ -66,3 +66,14 @@ func classifyMediaInput(err error, parameter string) (error, bool) {
 	}
 	return shared.WithDiagnostic(shared.NewValidationError(err), inputErr.code, parameter), true
 }
+
+// invalidDeviceTypeError reports an unknown --device-type as an
+// expected-negative validation failure, keeping its message and exit code.
+func invalidDeviceTypeError(err error) error {
+	return shared.WithDiagnostic(shared.NewValidationError(err), shared.DiagnosticInvalidInput, "--device-type")
+}
+
+// InvalidDeviceTypeError is invalidDeviceTypeError for other command groups.
+func InvalidDeviceTypeError(err error) error {
+	return invalidDeviceTypeError(err)
+}
