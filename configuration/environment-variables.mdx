@@ -152,6 +152,19 @@ They do not replace `ASC_KEY_ID`, `ASC_ISSUER_ID`, or the other API credentials.
   store and prints a warning to stderr. `ASC_BYPASS_KEYCHAIN` disables it too.
 </ParamField>
 
+<ParamField path="ASC_WEB_NO_AUTO_LOGIN" type="boolean">
+  Never sign in automatically from `asc web` commands other than
+  `asc web auth login`
+
+  Set to `true`, `1`, `yes`, or `on` for scripts and agents that cannot finish
+  two-factor verification. Every web command except `asc web auth login` then
+  uses only the cached session; when it is missing or expired, the command
+  exits with code `2` and a hint to run `asc web auth login`, without contacting
+  Apple. `asc web auth login` still signs in and still uses the saved password.
+  `0`, `false`, `no`, `off`, and an empty value keep automatic sign-in on (the
+  default); any other value fails with a usage error.
+</ParamField>
+
 <ParamField path="ASC_WEB_2FA_CODE_COMMAND" type="string">
   Shell command whose stdout supplies the two-factor code when a fresh `asc web`
   login needs verification
@@ -229,7 +242,9 @@ They do not replace `ASC_KEY_ID`, `ASC_ISSUER_ID`, or the other API credentials.
   Directory for the file-backed `asc web` session cache
 
   Default: `~/.asc/web`. Set it with `ASC_WEB_SESSION_CACHE_BACKEND=file` to
-  keep tests and automation away from the operator's real session cache.
+  keep tests and automation away from the operator's real session cache. The
+  per-account sign-in cooldown that follows an Apple sign-in server error is
+  stored in this directory too.
 </ParamField>
 
 <ParamField path="ASC_WEB_SESSION_PROVIDER" type="string">
