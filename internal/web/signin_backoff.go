@@ -134,7 +134,7 @@ func RecordSigninBackoff(appleID string, backoff SigninBackoff) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal sign-in backoff: %w", err)
 	}
-	temp, err := createAndWriteSessionTempFile(path, raw, 0o600)
+	temp, err := createAndWriteSessionTempFile(path, raw)
 	if err != nil {
 		return fmt.Errorf("failed to write sign-in backoff: %w", err)
 	}
