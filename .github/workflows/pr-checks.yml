@@ -357,6 +357,7 @@ jobs:
               export CGO_LDFLAGS="-O2 -g -mmacosx-version-min=13.0"
               ASC_BYPASS_KEYCHAIN=1 go test -short ./internal/screenshots
               ASC_BYPASS_KEYCHAIN=1 go test -short -count=1 ./internal/rootfs
+              ASC_BYPASS_KEYCHAIN=1 go test -short -count=1 ./internal/artifacts -run '^TestVerifyMachOChecks(SystemBinary|LaunchConstrainedBinary)IntegrityAndTrust$'
               ASC_BYPASS_KEYCHAIN=1 go test -short -count=1 ./internal/secureopen -run 'NoInherit'
               ASC_BYPASS_KEYCHAIN=1 go test -short -count=1 ./internal/cli/certificates -run 'ACL|OwnerOnlyAtCreation'
               MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o build/asc_dev_macos_amd64 .
