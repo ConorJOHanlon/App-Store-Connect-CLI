@@ -123,7 +123,7 @@ printf '%s' '{"streams":[{"codec_type":"video","codec_name":"h264","width":1920,
 		return
 	}
 	if pending {
-		if !errors.Is(err, context.DeadlineExceeded) || errfmt.Classify(err).Hint != "Increase the upload timeout (e.g. set `ASC_UPLOAD_TIMEOUT=600s`)." {
+		if !errors.Is(err, context.DeadlineExceeded) || errfmt.Classify(err).Hint != "Increase the upload timeout (e.g. set `ASC_UPLOAD_TIMEOUT=45m`)." {
 			t.Fatalf("processing deadline uses wrong hint: err=%v hint=%q", err, errfmt.Classify(err).Hint)
 		}
 		if err == nil || !strings.Contains(stdout, `"uploaded":true`) || !strings.Contains(stdout, `"ready":false`) || !strings.Contains(stdout, `"videoId":"video"`) {

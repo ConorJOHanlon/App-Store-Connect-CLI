@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
@@ -54,7 +55,8 @@ func videosUploadCommand() *ffcli.Command {
 
 Requires ffprobe (FFmpeg) to inspect the file. Dimensions, frame rate, duration,
 audio and file size must match Apple's current asset reference specifications.
-ASC_UPLOAD_TIMEOUT bounds upload and processing. Failures after reservation print
+ASC_UPLOAD_TIMEOUT bounds upload and processing (default 30m for videos, since
+Apple commonly takes 10 to 15 minutes to process one). Failures after reservation print
 a partial receipt with the video ID; no automatic deletion occurs.
 
 Examples:
@@ -148,7 +150,7 @@ Examples:
 		if _, err := staged.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
-		uploadCtx, cancel := shared.ContextWithUploadTimeout(ctx)
+		uploadCtx, cancel := libraryVideoUploadContext(ctx)
 		defer cancel()
 		result, uploadErr := client.UploadAssetLibraryVideoWithCategory(uploadCtx, id, filepath.Base(source), staged, info.Size(), selected, selectedReferenceName, shared.ContextWithTimeout)
 		if uploadErr == nil || result.VideoID != "" {
@@ -164,4 +166,13 @@ Examples:
 		}
 		return nil
 	}}
+}
+
+// libraryVideoUploadTimeout bounds a library video upload and Apple's
+// processing of it. Processing commonly takes 10 to 15 minutes, so the general
+// 5 minute upload default would expire before most videos finish.
+const libraryVideoUploadTimeout = 30 * time.Minute
+
+func libraryVideoUploadContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return shared.ContextWithResolvedUploadTimeout(ctx, libraryVideoUploadTimeout)
 }
