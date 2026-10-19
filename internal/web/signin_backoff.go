@@ -36,9 +36,9 @@ type SigninBackoff struct {
 }
 
 // NewSigninBackoff builds the cooldown for a sign-in 5xx observed at now. A
-// Retry-After from Apple, in seconds or as an HTTP date, sets the cooldown;
-// without one DefaultSigninBackoff applies. Either is capped at
-// MaxSigninBackoff.
+// Retry-After from Apple, in seconds or as an HTTP date, sets the cooldown, and
+// one allowing an immediate retry leaves none; without a valid one
+// DefaultSigninBackoff applies. Either is capped at MaxSigninBackoff.
 func NewSigninBackoff(serviceErr *SigninServiceError, now time.Time) SigninBackoff {
 	backoff := SigninBackoff{Version: signinBackoffVersion, FailedAt: now.UTC()}
 	cooldown := DefaultSigninBackoff
@@ -52,6 +52,11 @@ func NewSigninBackoff(serviceErr *SigninServiceError, now time.Time) SigninBacko
 	}
 	backoff.NotBefore = backoff.FailedAt.Add(min(cooldown, MaxSigninBackoff))
 	return backoff
+}
+
+// Active reports whether the cooldown pauses sign-in at all.
+func (b SigninBackoff) Active() bool {
+	return b.NotBefore.After(b.FailedAt)
 }
 
 // ActiveUntil reports when automatic sign-in may resume and whether that is
@@ -76,7 +81,7 @@ func parseSigninRetryAfter(value string, now time.Time) (time.Duration, bool) {
 		return 0, false
 	}
 	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil {
-		if seconds <= 0 {
+		if seconds < 0 {
 			return 0, false
 		}
 		if seconds > int64(MaxSigninBackoff/time.Second) {
@@ -85,9 +90,7 @@ func parseSigninRetryAfter(value string, now time.Time) (time.Duration, bool) {
 		return time.Duration(seconds) * time.Second, true
 	}
 	if at, err := http.ParseTime(value); err == nil {
-		if delay := at.Sub(now); delay > 0 {
-			return delay, true
-		}
+		return max(at.Sub(now), 0), true
 	}
 	return 0, false
 }

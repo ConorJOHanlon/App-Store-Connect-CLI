@@ -96,6 +96,38 @@ func TestResolveSessionBacksOffAutomaticSigninAfterApple5xx(t *testing.T) {
 	}
 }
 
+func TestResolveSessionHonorsRetryAfterAllowingImmediateRetry(t *testing.T) {
+	start := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	for _, retryAfter := range []string{"0", start.Add(-time.Minute).Format(http.TimeFormat)} {
+		t.Run(retryAfter, func(t *testing.T) {
+			fixture := newSigninUnavailableFixture(t, true)
+			useSigninBackoffStore(t)
+			unavailable := func(stage string) error {
+				return &webcore.SigninServiceError{Stage: stage, Status: http.StatusServiceUnavailable, RetryAfter: retryAfter}
+			}
+			webLoginWithClientFn = func(context.Context, *http.Client, webcore.LoginCredentials) (*webcore.AuthSession, error) {
+				fixture.cachedAttempts++
+				return nil, unavailable("signin_init")
+			}
+			webLoginFn = func(context.Context, webcore.LoginCredentials) (*webcore.AuthSession, error) {
+				fixture.freshAttempts++
+				return nil, unavailable("signin_complete")
+			}
+
+			_, _, err := resolveSession(context.Background(), "user@example.com", "", "")
+			if !isSigninServerError(err) || strings.Contains(err.Error(), "will not sign in automatically") {
+				t.Fatalf("first run error = %v, want Apple's 5xx without a cooldown", err)
+			}
+			if _, _, err := resolveSession(context.Background(), "user@example.com", "", ""); !isSigninServerError(err) {
+				t.Fatalf("second run error = %v, want an immediate sign-in attempt", err)
+			}
+			if fixture.cachedAttempts != 2 {
+				t.Fatalf("cached attempts = %d, want Apple's immediate retry allowance honored", fixture.cachedAttempts)
+			}
+		})
+	}
+}
+
 func TestWebAuthLoginIgnoresSigninBackoffAndClearsItOnAcceptedSignin(t *testing.T) {
 	fixture := newSigninUnavailableFixture(t, true)
 	useSigninBackoffStore(t)

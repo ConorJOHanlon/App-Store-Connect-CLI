@@ -99,6 +99,11 @@ func recordSigninBackoff(appleID string, serviceErr *webcore.SigninServiceError)
 		return time.Time{}, false
 	}
 	backoff := webcore.NewSigninBackoff(serviceErr, signinBackoffNowFn())
+	if !backoff.Active() {
+		// Apple allowed an immediate retry, so no earlier pause applies either.
+		clearSigninBackoff(appleID)
+		return time.Time{}, false
+	}
 	if err := recordSigninBackoffFn(appleID, backoff); err != nil {
 		printSigninBackoffWarning(fmt.Errorf("recording the sign-in backoff failed: %w", err))
 		return time.Time{}, false
