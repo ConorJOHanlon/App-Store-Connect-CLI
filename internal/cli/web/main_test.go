@@ -33,6 +33,10 @@ func TestMain(m *testing.M) {
 	// Tests stand in for the 2FA prompt, so the host's terminal must not decide
 	// whether a sign-in may start.
 	twoFactorPromptAvailableFn = func() bool { return true }
+	// Many tests share one Apple ID and simulate sign-in 5xx answers; a
+	// recorded cooldown would leak into later tests. Tests of the cooldown
+	// itself opt back into the real store with useSigninBackoffStore.
+	recordSigninBackoffFn = func(string, webcore.SigninBackoff) error { return nil }
 
 	code := m.Run()
 
