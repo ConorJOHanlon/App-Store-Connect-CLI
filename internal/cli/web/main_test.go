@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	webcore "github.com/rudrankriyam/App-Store-Connect-CLI/internal/web"
 )
@@ -36,7 +37,7 @@ func TestMain(m *testing.M) {
 	// Many tests share one Apple ID and simulate sign-in 5xx answers; a
 	// recorded cooldown would leak into later tests. Tests of the cooldown
 	// itself opt back into the real store with useSigninBackoffStore.
-	recordSigninBackoffFn = func(string, webcore.SigninBackoff) (bool, error) { return false, nil }
+	recordSigninBackoffFn = func(string, webcore.SigninBackoff, time.Time) (bool, error) { return false, nil }
 
 	code := m.Run()
 

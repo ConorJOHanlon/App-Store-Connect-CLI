@@ -136,10 +136,10 @@ func LoadSigninBackoff(appleID string) (SigninBackoff, bool, error) {
 // failure observed before the recorded outcome is dropped, so an attempt that
 // finishes late cannot reinstate a cooldown a newer sign-in already cleared or
 // replace a newer failure's cooldown.
-func RecordSigninBackoff(appleID string, backoff SigninBackoff) (bool, error) {
+func RecordSigninBackoff(appleID string, backoff SigninBackoff, now time.Time) (bool, error) {
 	recorded := false
 	err := withSigninBackoffLock(appleID, func(existing SigninBackoff, found bool) (*SigninBackoff, error) {
-		if found && (existing.SucceededAt.After(backoff.FailedAt) || existing.FailedAt.After(backoff.FailedAt)) {
+		if found && (outcomeNewer(existing.SucceededAt, backoff.FailedAt, now) || outcomeNewer(existing.FailedAt, backoff.FailedAt, now)) {
 			return nil, nil
 		}
 		backoff.SucceededAt = time.Time{}
@@ -154,13 +154,20 @@ func RecordSigninBackoff(appleID string, backoff SigninBackoff) (bool, error) {
 
 // ClearSigninBackoff ends any cooldown for appleID observed before Apple
 // accepted a sign-in at succeededAt. A failure observed later is kept.
-func ClearSigninBackoff(appleID string, succeededAt time.Time) error {
+func ClearSigninBackoff(appleID string, succeededAt, now time.Time) error {
 	return withSigninBackoffLock(appleID, func(existing SigninBackoff, found bool) (*SigninBackoff, error) {
-		if found && (existing.FailedAt.After(succeededAt) || existing.SucceededAt.After(succeededAt)) {
+		if found && (outcomeNewer(existing.FailedAt, succeededAt, now) || outcomeNewer(existing.SucceededAt, succeededAt, now)) {
 			return nil, nil
 		}
 		return &SigninBackoff{SucceededAt: succeededAt.UTC()}, nil
 	})
+}
+
+// outcomeNewer reports whether a stored outcome time supersedes one observed at
+// observed. A stored time later than now can only come from a clock that has
+// since moved backward, or an edited record, so it is stale and never wins.
+func outcomeNewer(stored, observed, now time.Time) bool {
+	return stored.After(observed) && !stored.After(now)
 }
 
 // withSigninBackoffLock runs update on appleID's current record under the

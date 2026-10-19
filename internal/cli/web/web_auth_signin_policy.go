@@ -104,7 +104,7 @@ func recordSigninBackoff(appleID string, serviceErr *webcore.SigninServiceError,
 		clearSigninBackoff(appleID, observedAt)
 		return time.Time{}, false
 	}
-	recorded, err := recordSigninBackoffFn(appleID, backoff)
+	recorded, err := recordSigninBackoffFn(appleID, backoff, signinBackoffNowFn())
 	if err != nil {
 		printSigninBackoffWarning(fmt.Errorf("recording the sign-in backoff failed: %w", err))
 		return time.Time{}, false
@@ -118,7 +118,7 @@ func clearSigninBackoff(appleID string, succeededAt time.Time) {
 	if appleID == "" {
 		return
 	}
-	if err := clearSigninBackoffFn(appleID, succeededAt); err != nil {
+	if err := clearSigninBackoffFn(appleID, succeededAt, signinBackoffNowFn()); err != nil {
 		printSigninBackoffWarning(fmt.Errorf("clearing the sign-in backoff record failed: %w", err))
 	}
 }

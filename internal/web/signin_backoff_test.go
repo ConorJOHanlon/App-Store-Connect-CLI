@@ -51,6 +51,8 @@ func TestSigninBackoffKeepsNewestOutcomeRegardlessOfWriteOrder(t *testing.T) {
 		t.Run(map[bool]string{false: "success newest", true: "failure newest"}[newestIsFailure], func(t *testing.T) {
 			t.Setenv(webSessionCacheDirEnv, t.TempDir())
 			const outcomes = 16
+			// Every write lands after all outcomes were observed, on one clock.
+			writtenAt := start.Add(outcomes * time.Second)
 			var wg sync.WaitGroup
 			for i := range outcomes {
 				at := start.Add(time.Duration(i) * time.Second)
@@ -59,9 +61,9 @@ func TestSigninBackoffKeepsNewestOutcomeRegardlessOfWriteOrder(t *testing.T) {
 				wg.Go(func() {
 					var err error
 					if isFailure {
-						_, err = RecordSigninBackoff("user@example.com", NewSigninBackoff(failure, at))
+						_, err = RecordSigninBackoff("user@example.com", NewSigninBackoff(failure, at), writtenAt)
 					} else {
-						err = ClearSigninBackoff("user@example.com", at)
+						err = ClearSigninBackoff("user@example.com", at, writtenAt)
 					}
 					if err != nil {
 						t.Errorf("outcome at %s: %v", at, err)
@@ -79,5 +81,27 @@ func TestSigninBackoffKeepsNewestOutcomeRegardlessOfWriteOrder(t *testing.T) {
 				t.Fatalf("cooldown active = %v after newest outcome (failure=%v); record %+v", active, newestIsFailure, backoff)
 			}
 		})
+	}
+}
+
+// A failure stamped by a clock that later moved backward must not outrank a
+// success observed afterwards, or the stale cooldown would reactivate once the
+// clock catches up.
+func TestClearSigninBackoffOverridesFutureDatedFailure(t *testing.T) {
+	t.Setenv(webSessionCacheDirEnv, t.TempDir())
+	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	future := now.Add(30 * time.Minute)
+	if _, err := RecordSigninBackoff("user@example.com", NewSigninBackoff(&SigninServiceError{Stage: "signin_init", Status: 503}, future), future); err != nil {
+		t.Fatal(err)
+	}
+	if err := ClearSigninBackoff("user@example.com", now, now); err != nil {
+		t.Fatal(err)
+	}
+	backoff, _, err := LoadSigninBackoff("user@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, active := backoff.ActiveUntil(future.Add(time.Minute)); active {
+		t.Fatalf("future-dated failure survived a later success: %+v", backoff)
 	}
 }
