@@ -123,7 +123,7 @@ asc product-pages custom-pages localizations placements swap \
   --image-id IMAGE_ID --placement-type PRODUCT_PAGE_HEADER_ASSET --confirm
 ```
 
-`swap` uses a live-supported extension outside the OpenAPI 4.5.1 create schema to link the existing placement to its replacement in one request. It accepts an image or video of the same media type as the existing placement, sends no placement group, and requires `--confirm`. Apple validates the existing context, group, media, and editability. A failed swap does not trigger a separate deletion or fallback removal.
+`swap` uses a live-supported extension outside the OpenAPI 4.5.1 create schema to link the existing placement to its replacement in one request. It accepts an image or video of the same media type as the existing placement and requires `--confirm`. Apple requires the replacement to keep the existing placement's group, so the command first reads that group from the existing placement and sends it with the swap; there is no group flag. Apple validates the existing context, media, and editability. A failed swap does not trigger a separate deletion or fallback removal.
 
 For an already-live version, Apple's website guides users through **Next → Publish** when selecting an approved replacement. The CLI's swap receipt does not promise storefront publication; no separate public publication command is available. New-version assets still follow the version's review and release workflow.
 
