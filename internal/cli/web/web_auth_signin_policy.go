@@ -93,31 +93,32 @@ func checkSigninBackoff(appleID string) error {
 // recordSigninBackoff remembers that Apple's sign-in service answered appleID
 // with a 5xx and returns when automatic sign-in may resume. A write failure
 // only warns: the sign-in error itself is still reported.
-func recordSigninBackoff(appleID string, serviceErr *webcore.SigninServiceError) (time.Time, bool) {
+func recordSigninBackoff(appleID string, serviceErr *webcore.SigninServiceError, observedAt time.Time) (time.Time, bool) {
 	appleID = strings.TrimSpace(appleID)
 	if appleID == "" || serviceErr == nil {
 		return time.Time{}, false
 	}
-	backoff := webcore.NewSigninBackoff(serviceErr, signinBackoffNowFn())
+	backoff := webcore.NewSigninBackoff(serviceErr, observedAt)
 	if !backoff.Active() {
 		// Apple allowed an immediate retry, so no earlier pause applies either.
-		clearSigninBackoff(appleID)
+		clearSigninBackoff(appleID, observedAt)
 		return time.Time{}, false
 	}
-	if err := recordSigninBackoffFn(appleID, backoff); err != nil {
+	recorded, err := recordSigninBackoffFn(appleID, backoff)
+	if err != nil {
 		printSigninBackoffWarning(fmt.Errorf("recording the sign-in backoff failed: %w", err))
 		return time.Time{}, false
 	}
-	return backoff.NotBefore, true
+	return backoff.NotBefore, recorded
 }
 
 // clearSigninBackoff drops any cooldown after Apple accepted a sign-in.
-func clearSigninBackoff(appleID string) {
+func clearSigninBackoff(appleID string, succeededAt time.Time) {
 	appleID = strings.TrimSpace(appleID)
 	if appleID == "" {
 		return
 	}
-	if err := clearSigninBackoffFn(appleID); err != nil {
+	if err := clearSigninBackoffFn(appleID, succeededAt); err != nil {
 		printSigninBackoffWarning(fmt.Errorf("clearing the sign-in backoff record failed: %w", err))
 	}
 }

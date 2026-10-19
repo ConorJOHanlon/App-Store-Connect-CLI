@@ -1072,7 +1072,9 @@ type webSignInPolicy struct {
 	// Apple superseded; it becomes the recorded cooldown if the resolution fails.
 	failure         *webcore.SigninServiceError
 	failureAppleID  string
+	failureAt       time.Time
 	signedInAppleID string
+	signedInAt      time.Time
 }
 
 // allowSignIn runs before anything is sent to Apple for appleID. It refuses an
@@ -1093,13 +1095,15 @@ func (p *webSignInPolicy) allowSignIn(appleID string) error {
 // the service accepted the request (success, a two-factor challenge, or a
 // credential rejection) supersedes it. Local failures change nothing.
 func (p *webSignInPolicy) observe(appleID string, err error, reachedTwoFactor bool) {
+	// Outcomes are stamped when Apple answers, not when they are persisted, so
+	// concurrent processes can order them.
 	var serviceErr *webcore.SigninServiceError
 	switch {
 	case err == nil:
 		p.failure, p.failureAppleID = nil, ""
-		p.signedInAppleID = appleID
+		p.signedInAppleID, p.signedInAt = appleID, signinBackoffNowFn()
 	case errors.As(err, &serviceErr) && serviceErr.IsServerError() && !reachedTwoFactor:
-		p.failure, p.failureAppleID = serviceErr, appleID
+		p.failure, p.failureAppleID, p.failureAt = serviceErr, appleID, signinBackoffNowFn()
 	case reachedTwoFactor, errors.Is(err, webcore.ErrInvalidAppleAccountCredentials):
 		p.failure, p.failureAppleID = nil, ""
 	}
@@ -1111,12 +1115,12 @@ func (p *webSignInPolicy) observe(appleID string, err error, reachedTwoFactor bo
 // session failed.
 func (p *webSignInPolicy) finish(err error) error {
 	if p.signedInAppleID != "" {
-		clearSigninBackoff(p.signedInAppleID)
+		clearSigninBackoff(p.signedInAppleID, p.signedInAt)
 	}
 	if err == nil || p.failure == nil {
 		return err
 	}
-	notBefore, recorded := recordSigninBackoff(p.failureAppleID, p.failure)
+	notBefore, recorded := recordSigninBackoff(p.failureAppleID, p.failure, p.failureAt)
 	if recorded && isSigninServerError(err) {
 		return fmt.Errorf("%w. Other asc web commands will not sign in automatically before %s; `asc web auth login` can still be run explicitly", err, notBefore.UTC().Format(time.RFC3339))
 	}

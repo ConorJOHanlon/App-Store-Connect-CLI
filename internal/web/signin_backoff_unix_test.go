@@ -17,8 +17,8 @@ func TestRecordSigninBackoffWritesPrivateFileInSessionCacheDir(t *testing.T) {
 	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
 	backoff := NewSigninBackoff(&SigninServiceError{Stage: "signin_init", Status: 503}, now)
 
-	if err := RecordSigninBackoff("User@Example.com", backoff); err != nil {
-		t.Fatalf("RecordSigninBackoff: %v", err)
+	if recorded, err := RecordSigninBackoff("User@Example.com", backoff); err != nil || !recorded {
+		t.Fatalf("RecordSigninBackoff = (%v, %v)", recorded, err)
 	}
 	info, err := os.Stat(filepath.Join(dir, "signin-backoff-"+webSessionCacheKey("user@example.com")+".json"))
 	if err != nil {

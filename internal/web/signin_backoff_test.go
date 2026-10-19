@@ -1,6 +1,7 @@
 package web
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -34,6 +35,48 @@ func TestSigninBackoffActiveUntilCannotExceedCap(t *testing.T) {
 			until, active := tc.backoff.ActiveUntil(now)
 			if active != tc.wantActive || (tc.wantActive && !until.Equal(tc.wantUntil)) {
 				t.Fatalf("ActiveUntil = (%s, %v), want (%s, %v)", until, active, tc.wantUntil, tc.wantActive)
+			}
+		})
+	}
+}
+
+// Concurrent asc processes finish sign-in attempts in any order. Whatever the
+// order, the record must reflect the newest outcome Apple gave: an older 5xx
+// written late must not reinstate a cooldown a newer success cleared, and an
+// older success must not clear a newer 5xx.
+func TestSigninBackoffKeepsNewestOutcomeRegardlessOfWriteOrder(t *testing.T) {
+	start := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	failure := &SigninServiceError{Stage: "signin_init", Status: 503}
+	for _, newestIsFailure := range []bool{false, true} {
+		t.Run(map[bool]string{false: "success newest", true: "failure newest"}[newestIsFailure], func(t *testing.T) {
+			t.Setenv(webSessionCacheDirEnv, t.TempDir())
+			const outcomes = 16
+			var wg sync.WaitGroup
+			for i := range outcomes {
+				at := start.Add(time.Duration(i) * time.Second)
+				// Alternate outcomes; the newest (odd) index is the requested kind.
+				isFailure := (i%2 == 1) == newestIsFailure
+				wg.Go(func() {
+					var err error
+					if isFailure {
+						_, err = RecordSigninBackoff("user@example.com", NewSigninBackoff(failure, at))
+					} else {
+						err = ClearSigninBackoff("user@example.com", at)
+					}
+					if err != nil {
+						t.Errorf("outcome at %s: %v", at, err)
+					}
+				})
+			}
+			wg.Wait()
+
+			backoff, _, err := LoadSigninBackoff("user@example.com")
+			if err != nil {
+				t.Fatal(err)
+			}
+			newest := start.Add((outcomes - 1) * time.Second)
+			if _, active := backoff.ActiveUntil(newest); active != newestIsFailure {
+				t.Fatalf("cooldown active = %v after newest outcome (failure=%v); record %+v", active, newestIsFailure, backoff)
 			}
 		})
 	}

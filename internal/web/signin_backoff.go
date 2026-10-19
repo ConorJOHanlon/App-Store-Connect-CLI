@@ -33,6 +33,10 @@ type SigninBackoff struct {
 	Stage      string    `json:"stage,omitempty"`
 	Status     int       `json:"status,omitempty"`
 	RetryAfter string    `json:"retry_after,omitempty"`
+	// SucceededAt is when Apple last accepted a sign-in for the account. It
+	// outlives the cooldown it cleared so that a slower process cannot record
+	// a failure it observed before that success.
+	SucceededAt time.Time `json:"succeeded_at,omitzero"`
 }
 
 // NewSigninBackoff builds the cooldown for a sign-in 5xx observed at now. A
@@ -127,8 +131,41 @@ func LoadSigninBackoff(appleID string) (SigninBackoff, bool, error) {
 }
 
 // RecordSigninBackoff stores the sign-in cooldown for appleID next to the web
-// session cache, readable only by the current user.
-func RecordSigninBackoff(appleID string, backoff SigninBackoff) error {
+// session cache, readable only by the current user, and reports whether it did.
+// Concurrent asc processes update the record under a per-account lock, and a
+// failure observed before the recorded outcome is dropped, so an attempt that
+// finishes late cannot reinstate a cooldown a newer sign-in already cleared or
+// replace a newer failure's cooldown.
+func RecordSigninBackoff(appleID string, backoff SigninBackoff) (bool, error) {
+	recorded := false
+	err := withSigninBackoffLock(appleID, func(existing SigninBackoff, found bool) (*SigninBackoff, error) {
+		if found && (existing.SucceededAt.After(backoff.FailedAt) || existing.FailedAt.After(backoff.FailedAt)) {
+			return nil, nil
+		}
+		backoff.SucceededAt = time.Time{}
+		if found {
+			backoff.SucceededAt = existing.SucceededAt
+		}
+		recorded = true
+		return &backoff, nil
+	})
+	return recorded && err == nil, err
+}
+
+// ClearSigninBackoff ends any cooldown for appleID observed before Apple
+// accepted a sign-in at succeededAt. A failure observed later is kept.
+func ClearSigninBackoff(appleID string, succeededAt time.Time) error {
+	return withSigninBackoffLock(appleID, func(existing SigninBackoff, found bool) (*SigninBackoff, error) {
+		if found && (existing.FailedAt.After(succeededAt) || existing.SucceededAt.After(succeededAt)) {
+			return nil, nil
+		}
+		return &SigninBackoff{SucceededAt: succeededAt.UTC()}, nil
+	})
+}
+
+// withSigninBackoffLock runs update on appleID's current record under the
+// account's advisory lock and writes the record it returns, if any.
+func withSigninBackoffLock(appleID string, update func(existing SigninBackoff, found bool) (*SigninBackoff, error)) error {
 	path, err := signinBackoffFilePath(appleID)
 	if err != nil {
 		return err
@@ -136,8 +173,20 @@ func RecordSigninBackoff(appleID string, backoff SigninBackoff) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("failed to create session cache dir: %w", err)
 	}
-	backoff.Version = signinBackoffVersion
-	raw, err := json.Marshal(backoff)
+	release := acquireSessionEntryLock("signin-backoff-" + webSessionCacheKey(appleID))
+	defer release()
+
+	existing, found, err := LoadSigninBackoff(appleID)
+	if err != nil {
+		// A malformed record carries no ordering worth preserving.
+		existing, found = SigninBackoff{}, false
+	}
+	next, err := update(existing, found)
+	if err != nil || next == nil {
+		return err
+	}
+	next.Version = signinBackoffVersion
+	raw, err := json.Marshal(next)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sign-in backoff: %w", err)
 	}
@@ -148,18 +197,6 @@ func RecordSigninBackoff(appleID string, backoff SigninBackoff) error {
 	defer temp.cleanup()
 	if err := publishSessionTempFile(temp, path); err != nil {
 		return fmt.Errorf("failed to finalize sign-in backoff: %w", err)
-	}
-	return nil
-}
-
-// ClearSigninBackoff removes any recorded sign-in cooldown for appleID.
-func ClearSigninBackoff(appleID string) error {
-	path, err := signinBackoffFilePath(appleID)
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
 	}
 	return nil
 }
