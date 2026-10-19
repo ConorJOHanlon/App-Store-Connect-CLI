@@ -56,11 +56,15 @@ func NewSigninBackoff(serviceErr *SigninServiceError, now time.Time) SigninBacko
 
 // ActiveUntil reports when automatic sign-in may resume and whether that is
 // still in the future at now. The deadline never lies more than
-// MaxSigninBackoff past now, so a clock change or an edited record cannot
-// extend the pause beyond the cap.
+// MaxSigninBackoff past the recorded failure, and a failure recorded in the
+// future (a clock moved backward, or an edited record) is ignored, so neither
+// can extend the pause beyond the cap.
 func (b SigninBackoff) ActiveUntil(now time.Time) (time.Time, bool) {
+	if b.FailedAt.IsZero() || b.FailedAt.After(now) {
+		return time.Time{}, false
+	}
 	notBefore := b.NotBefore
-	if limit := now.Add(MaxSigninBackoff); notBefore.After(limit) {
+	if limit := b.FailedAt.Add(MaxSigninBackoff); notBefore.After(limit) {
 		notBefore = limit
 	}
 	return notBefore, now.Before(notBefore)
