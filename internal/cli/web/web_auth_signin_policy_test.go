@@ -153,8 +153,12 @@ func TestWebAuthLoginIgnoresSigninBackoffAndClearsItOnAcceptedSignin(t *testing.
 	if fixture.cachedAttempts != 2 || fixture.freshAttempts != 2 {
 		t.Fatalf("attempts: cached = %d, fresh = %d; want the explicit login to contact Apple despite the cooldown", fixture.cachedAttempts, fixture.freshAttempts)
 	}
-	if _, ok, err := webcore.LoadSigninBackoff("user@example.com"); err != nil || ok {
-		t.Fatalf("backoff record after Apple accepted the login: ok = %v, err = %v; want it cleared", ok, err)
+	backoff, _, err := webcore.LoadSigninBackoff("user@example.com")
+	if err != nil {
+		t.Fatalf("load backoff record: %v", err)
+	}
+	if _, active := backoff.ActiveUntil(time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)); active {
+		t.Fatalf("backoff record after Apple accepted the login = %+v; want no active cooldown", backoff)
 	}
 }
 
