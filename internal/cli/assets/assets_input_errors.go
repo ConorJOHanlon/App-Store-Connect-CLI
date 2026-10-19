@@ -2,8 +2,6 @@ package assets
 
 import (
 	"errors"
-	"io/fs"
-	"syscall"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
@@ -24,17 +22,8 @@ func (e *mediaInputError) Unwrap() error { return e.err }
 // file to file_not_found or file_permission_denied. Any other filesystem
 // failure, such as EIO, says nothing about the input and stays unmarked.
 func markMediaInput(err error, code shared.DiagnosticCode) error {
-	if err == nil {
-		return nil
-	}
-	var pathErr *fs.PathError
-	var errno syscall.Errno
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		code = shared.DiagnosticFileNotFound
-	case errors.Is(err, fs.ErrPermission):
-		code = shared.DiagnosticFilePermissionDenied
-	case errors.As(err, &pathErr), errors.As(err, &errno):
+	code, ok := shared.LocalFileDiagnostic(err, code)
+	if !ok {
 		return err
 	}
 	return &mediaInputError{code: code, err: err}
