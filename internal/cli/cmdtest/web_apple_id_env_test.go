@@ -95,11 +95,13 @@ func TestWebCommandsHonorNoAutoLoginEnvironment(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		value      string
+		appleID    string
 		wantHint   string
 		wantStderr string
 	}{
-		{name: "opted in", value: "1", wantHint: "ASC_WEB_NO_AUTO_LOGIN is set"},
-		{name: "invalid value", value: "maybe", wantStderr: `Error: invalid ASC_WEB_NO_AUTO_LOGIN value "maybe"`},
+		{name: "opted in", value: "1", appleID: "user@example.com", wantHint: "ASC_WEB_NO_AUTO_LOGIN is set"},
+		{name: "opted in without an account", value: "1", wantHint: "ASC_WEB_NO_AUTO_LOGIN is set"},
+		{name: "invalid value", value: "maybe", appleID: "user@example.com", wantStderr: `Error: invalid ASC_WEB_NO_AUTO_LOGIN value "maybe"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
@@ -108,7 +110,7 @@ func TestWebCommandsHonorNoAutoLoginEnvironment(t *testing.T) {
 			t.Setenv("ASC_WEB_SESSION_CACHE_DIR", t.TempDir())
 			t.Setenv("ASC_WEB_SESSION_CACHE", "1")
 			t.Setenv(webPasswordEnvNameForTest(), "")
-			t.Setenv(webAppleIDEnvNameForTest(), "user@example.com")
+			t.Setenv(webAppleIDEnvNameForTest(), tc.appleID)
 			t.Setenv("ASC_WEB_NO_AUTO_LOGIN", tc.value)
 
 			stderr, runErr := runWebCommandForAppleIDDefault(t, "web", "review", "show", "--app", "123456789")

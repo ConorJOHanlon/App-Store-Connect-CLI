@@ -1106,16 +1106,14 @@ func (p *webSignInPolicy) observe(appleID string, err error, reachedTwoFactor bo
 }
 
 // finish persists the outcome: a resolution that failed after Apple's sign-in
-// service last answered with a 5xx records a cooldown, and one that signed in
-// clears it.
+// service last answered with a 5xx records a cooldown, and one in which Apple
+// accepted a sign-in clears it, even if a later local step such as caching the
+// session failed.
 func (p *webSignInPolicy) finish(err error) error {
-	if err == nil {
-		if p.signedInAppleID != "" {
-			clearSigninBackoff(p.signedInAppleID)
-		}
-		return nil
+	if p.signedInAppleID != "" {
+		clearSigninBackoff(p.signedInAppleID)
 	}
-	if p.failure == nil {
+	if err == nil || p.failure == nil {
 		return err
 	}
 	notBefore, recorded := recordSigninBackoff(p.failureAppleID, p.failure)
@@ -1386,6 +1384,9 @@ func resolveWebSessionWithPolicy(ctx context.Context, appleID, password, twoFact
 			}
 			if isWebSignIn(ctx) {
 				return nil, "", missingAppleIDUsageError()
+			}
+			if policy.noAutoSignIn {
+				return nil, "", newAutoSignInDisabledError("", policy.alternative)
 			}
 			return nil, "", newMissingWebSessionError("", publicAPIAlternativeFromContext(ctx))
 		default:

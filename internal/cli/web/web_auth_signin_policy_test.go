@@ -96,7 +96,7 @@ func TestResolveSessionBacksOffAutomaticSigninAfterApple5xx(t *testing.T) {
 	}
 }
 
-func TestWebAuthLoginIgnoresSigninBackoffAndClearsItOnSuccess(t *testing.T) {
+func TestWebAuthLoginIgnoresSigninBackoffAndClearsItOnAcceptedSignin(t *testing.T) {
 	fixture := newSigninUnavailableFixture(t, true)
 	useSigninBackoffStore(t)
 	webLoginFn = func(context.Context, webcore.LoginCredentials) (*webcore.AuthSession, error) {
@@ -107,20 +107,22 @@ func TestWebAuthLoginIgnoresSigninBackoffAndClearsItOnSuccess(t *testing.T) {
 		t.Fatalf("setup error = %v, want Apple's sign-in 5xx", err)
 	}
 
-	signedIn := &webcore.AuthSession{UserEmail: "user@example.com"}
-	webLoginWithClientFn = func(context.Context, *http.Client, webcore.LoginCredentials) (*webcore.AuthSession, error) {
-		fixture.cachedAttempts++
-		return signedIn, nil
+	// Apple accepts the explicit login's clean-jar retry, but caching the new
+	// session fails locally: the accepted sign-in still ends the cooldown.
+	webLoginFn = func(context.Context, webcore.LoginCredentials) (*webcore.AuthSession, error) {
+		fixture.freshAttempts++
+		return &webcore.AuthSession{UserEmail: "user@example.com"}, nil
 	}
-	session, _, err := resolveSession(contextForWebSignIn(context.Background()), "user@example.com", "", "")
-	if err != nil || session != signedIn {
-		t.Fatalf("explicit login = (%v, %v), want it to sign in despite the cooldown", session, err)
+	persistWebSessionFn = func(*webcore.AuthSession) error { return errors.New("disk full") }
+	_, _, err := resolveSession(contextForWebSignIn(context.Background()), "user@example.com", "", "")
+	if err == nil || !strings.Contains(err.Error(), "failed to cache session") {
+		t.Fatalf("explicit login error = %v, want the local cache failure", err)
 	}
-	if fixture.cachedAttempts != 2 {
-		t.Fatalf("cached attempts = %d, want the explicit login to contact Apple", fixture.cachedAttempts)
+	if fixture.cachedAttempts != 2 || fixture.freshAttempts != 2 {
+		t.Fatalf("attempts: cached = %d, fresh = %d; want the explicit login to contact Apple despite the cooldown", fixture.cachedAttempts, fixture.freshAttempts)
 	}
 	if _, ok, err := webcore.LoadSigninBackoff("user@example.com"); err != nil || ok {
-		t.Fatalf("backoff record after successful login: ok = %v, err = %v; want it cleared", ok, err)
+		t.Fatalf("backoff record after Apple accepted the login: ok = %v, err = %v; want it cleared", ok, err)
 	}
 }
 
