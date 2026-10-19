@@ -185,6 +185,30 @@ Error: 2fa required: run in a terminal for an interactive prompt, pass --two-fac
 
 A verification code Apple rejects exits with code `3`.
 
+### Automatic sign-in
+
+When the cached session has expired, a web command other than
+`asc web auth login` signs in again on its own when it can, using
+`ASC_WEB_PASSWORD` or the saved password. To turn this off for scripts and
+agents that cannot complete two-factor verification, set
+`ASC_WEB_NO_AUTO_LOGIN=1`. Those commands then use only the cached session.
+When it is missing or expired, they exit with code `2` and the next step,
+without contacting Apple:
+
+```text
+Error: no usable Apple web session for user@example.com
+Hint: The cached web session is missing or expired, and ASC_WEB_NO_AUTO_LOGIN is set, so this command does not sign in to Apple automatically. Run 'asc web auth login --apple-id user@example.com' to sign in, then retry.
+```
+
+Apple answers both outages and throttled sign-ins with a server error (`5xx`).
+When a sign-in fails that way, `asc` records a cooldown for the account in the
+session cache directory (`ASC_WEB_SESSION_CACHE_DIR`, default `~/.asc/web`).
+The cooldown lasts as long as Apple's `Retry-After` header asks, up to one hour,
+or 15 minutes when Apple sends no `Retry-After`. Until it ends, other web
+commands refuse to sign in automatically, exit with code `1`, and report when
+the next attempt is allowed. Running `asc web auth login` explicitly still
+signs in, and a successful sign-in clears the cooldown.
+
 ## Command families
 
 ### `asc web auth`
