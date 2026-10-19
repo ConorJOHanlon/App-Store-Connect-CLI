@@ -24,11 +24,31 @@ func normalizeAssetCategory(value string) (string, error) {
 	return category, nil
 }
 
+func bindUploadReferenceNameFlag(fs *flag.FlagSet) *string {
+	return fs.String("reference-name", "", "Internal reference name (defaults to Apple's name derived from the file name)")
+}
+
+// uploadReferenceName returns the trimmed --reference-name, rejecting an
+// explicitly blank value instead of silently falling back to Apple's default.
+func uploadReferenceName(fs *flag.FlagSet, value string) (string, error) {
+	name := strings.TrimSpace(value)
+	if name != "" {
+		return name, nil
+	}
+	set := false
+	fs.Visit(func(f *flag.Flag) { set = set || f.Name == "reference-name" })
+	if set {
+		return "", fmt.Errorf("--reference-name must not be blank")
+	}
+	return "", nil
+}
+
 func videosUploadCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("videos upload", flag.ExitOnError)
 	library := shared.BindResourceIDFlag(fs, "library-id", "appAssetLibraries", "Asset Library ID")
 	path := fs.String("file", "", "Video file to upload (.mp4, .m4v, or .mov)")
 	category := fs.String("category", "CREATIVE_ASSETS", "Asset category: CREATIVE_ASSETS or APP_SCREENSHOTS_AND_PREVIEWS")
+	referenceName := bindUploadReferenceNameFlag(fs)
 	output := shared.BindOutputFlags(fs)
 	return &ffcli.Command{Name: "upload", ShortUsage: "asc asset-library videos upload --library-id ID --file video.mp4 [flags]", ShortHelp: "Upload a video to the Asset Library and wait for processing.", LongHelp: `Upload a video independently of an app version, placement or review submission.
 
@@ -39,7 +59,8 @@ a partial receipt with the video ID; no automatic deletion occurs.
 
 Examples:
   asc asset-library videos upload --library-id LIBRARY_ID --file ./header.mp4
-  asc asset-library videos upload --library-id LIBRARY_ID --file ./duo-preview.mp4 --category APP_SCREENSHOTS_AND_PREVIEWS`, FlagSet: fs, UsageFunc: shared.DefaultUsageFunc, Exec: func(ctx context.Context, args []string) error {
+  asc asset-library videos upload --library-id LIBRARY_ID --file ./duo-preview.mp4 --category APP_SCREENSHOTS_AND_PREVIEWS
+  asc asset-library videos upload --library-id LIBRARY_ID --file ./cms-8f3a21.mp4 --reference-name "Hero en-US 3.14"`, FlagSet: fs, UsageFunc: shared.DefaultUsageFunc, Exec: func(ctx context.Context, args []string) error {
 		if len(args) > 0 {
 			return shared.UsageErrorf("asset-library videos upload: unexpected argument %q", args[0])
 		}
@@ -47,6 +68,10 @@ Examples:
 			return shared.UsageErrorf("asset-library videos upload: %v", err)
 		}
 		selected, err := normalizeAssetCategory(*category)
+		if err != nil {
+			return shared.UsageErrorf("asset-library videos upload: %v", err)
+		}
+		selectedReferenceName, err := uploadReferenceName(fs, *referenceName)
 		if err != nil {
 			return shared.UsageErrorf("asset-library videos upload: %v", err)
 		}
@@ -125,7 +150,7 @@ Examples:
 		}
 		uploadCtx, cancel := shared.ContextWithUploadTimeout(ctx)
 		defer cancel()
-		result, uploadErr := client.UploadAssetLibraryVideoWithCategory(uploadCtx, id, filepath.Base(source), staged, info.Size(), selected, shared.ContextWithTimeout)
+		result, uploadErr := client.UploadAssetLibraryVideoWithCategory(uploadCtx, id, filepath.Base(source), staged, info.Size(), selected, selectedReferenceName, shared.ContextWithTimeout)
 		if uploadErr == nil || result.VideoID != "" {
 			if err := shared.PrintOutput(&result, *output.Output, *output.Pretty); err != nil {
 				return err

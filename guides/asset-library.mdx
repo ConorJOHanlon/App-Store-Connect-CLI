@@ -47,7 +47,11 @@ asc asset-library images upload --library-id LIBRARY_ID \
   --file ./duo-screenshot.png --category APP_SCREENSHOTS_AND_PREVIEWS
 asc asset-library videos upload --library-id LIBRARY_ID \
   --file ./duo-preview.mp4 --category APP_SCREENSHOTS_AND_PREVIEWS
+asc asset-library images upload --library-id LIBRARY_ID \
+  --file ./cms-8f3a21.png --reference-name "Hero en-US 3.14"
 ```
+
+Apple derives each asset's file name and default reference name from the uploaded file, and the file name cannot change after upload. Pass `--reference-name` to set the searchable reference name at upload instead of running `asc asset-library images rename` (or `videos rename`) afterwards.
 
 Image files must meet the selected category's media specifications. Screenshots and creative images cannot contain an alpha channel or transparency, even when all pixels appear opaque.
 
