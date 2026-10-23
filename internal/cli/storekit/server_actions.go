@@ -242,9 +242,18 @@ func extendSubscriptionCommand() *ffcli.Command {
 	flags := bindServerWriteFlags(fs)
 	return documentedLeafCommand("extend", "asc storekit subscriptions extend --original-transaction-id ID --days DAYS --reason CODE --request-id ID --environment ENV --confirm [flags]", "Extend one eligible subscription's renewal date.",
 		`Compensate for service interruptions by extending an eligible paid, active
-subscription. Extensions cannot be reversed. Apple limits eligibility and the
-number of extensions. A 200 response can contain success:false; inspect it.
-Reuse the same --request-id to retry an uncertain request. Requires --confirm.`, fs, func(ctx context.Context, args []string) error {
+subscription by up to 90 days. Extensions cannot be reversed.
+
+Apple extends only active subscriptions with at least one paid period, at most
+twice per customer within 365 days. Subscriptions in a free offer period, in
+billing retry, in a billing grace period with a past expiration date, or
+expired are ineligible. Apple emails each customer whose renewal date moves.
+
+When Apple answers success:false, the command prints the response and exits 1.
+Reuse the same --request-id to retry an uncertain request. Requires --confirm.
+
+Examples:
+  asc storekit subscriptions extend --original-transaction-id 2000000000000001 --days 7 --reason 3 --request-id outage-2026-10-01 --environment production --confirm`, fs, func(ctx context.Context, args []string) error {
 			var request storekitapi.ExtendRenewalDateRequest
 			if err := flags.validate(args, func() (err error) {
 				request, err = extension.request(fs, false)
@@ -282,7 +291,16 @@ func extendAllSubscriptionsCommand() *ffcli.Command {
 targets all eligible storefronts. Extensions cannot be reversed. A successful
 submission only acknowledges processing; use extension-status or receive
 RENEWAL_EXTENSION notifications for outcomes. Reuse the same --request-id UUID
-when retrying an uncertain request. Requires --confirm.`, fs, func(ctx context.Context, args []string) error {
+when retrying an uncertain request. Requires --confirm.
+
+Apple extends only active subscriptions with at least one paid period, at most
+twice per customer within 365 days. Subscriptions in a free offer period, in
+billing retry, in a billing grace period with a past expiration date, or
+expired are ineligible. Apple emails each customer whose renewal date moves.
+
+Examples:
+  asc storekit subscriptions extend-all --product-id com.example.monthly --days 7 --reason 3 --request-id 11111111-2222-4333-8444-555555555555 --environment production --confirm
+  asc storekit subscriptions extend-all --product-id com.example.monthly --days 7 --reason 3 --request-id 11111111-2222-4333-8444-555555555555 --storefront-country-codes USA,GBR --environment production --confirm`, fs, func(ctx context.Context, args []string) error {
 			var request storekitapi.ExtendRenewalDateRequest
 			codes := shared.SplitCSVUpper(*countries)
 			if err := flags.validate(args, func() (err error) {
@@ -319,7 +337,10 @@ func extensionStatusCommand() *ffcli.Command {
 	return documentedLeafCommand("extension-status", "asc storekit subscriptions extension-status --product-id PRODUCT --request-id UUID --environment ENV [flags]", "Check bulk renewal-extension completion and final counts.",
 		`Get the status of a bulk renewal extension without polling automatically.
 Processing may take hours or days. Final counts appear when complete is true.
-Detailed outcomes are delivered through RENEWAL_EXTENSION notifications.`, fs, func(ctx context.Context, args []string) error {
+Detailed outcomes are delivered through RENEWAL_EXTENSION notifications.
+
+Examples:
+  asc storekit subscriptions extension-status --product-id com.example.monthly --request-id 11111111-2222-4333-8444-555555555555 --environment production`, fs, func(ctx context.Context, args []string) error {
 			if err := validateServerRead(args, flags, requiredFlag{"--product-id", *product}, requiredFlag{"--request-id", *id}); err != nil {
 				return err
 			}
