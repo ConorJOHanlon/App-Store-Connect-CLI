@@ -217,23 +217,22 @@ func (f extensionFlags) request(fs *flag.FlagSet, bulk bool) (storekitapi.Extend
 	if *f.reason < 0 || *f.reason > 3 {
 		return request, shared.UsageError("--reason must be between 0 and 3")
 	}
-	if err := validateExtensionRequestID(request.RequestIdentifier, bulk); err != nil {
-		return request, err
-	}
-	return request, nil
+	requestID, err := extensionRequestID(request.RequestIdentifier, bulk)
+	request.RequestIdentifier = requestID
+	return request, err
 }
 
-func validateExtensionRequestID(value string, bulk bool) error {
+func extensionRequestID(value string, bulk bool) (string, error) {
 	if err := requireFlag("--request-id", value); err != nil {
-		return err
+		return "", err
 	}
 	if utf8.RuneCountInString(value) > 128 {
-		return shared.UsageError("--request-id must be at most 128 characters")
+		return "", shared.UsageError("--request-id must be at most 128 characters")
 	}
 	if bulk {
-		return validateUUIDFlag("--request-id", value)
+		return parseUUIDFlag("--request-id", value)
 	}
-	return nil
+	return value, nil
 }
 
 func extendSubscriptionCommand() *ffcli.Command {
@@ -322,11 +321,12 @@ Detailed outcomes are delivered through RENEWAL_EXTENSION notifications.`, fs, f
 			if err := validateServerRead(args, flags, requiredFlag{"--product-id", *product}, requiredFlag{"--request-id", *id}); err != nil {
 				return err
 			}
-			if err := validateExtensionRequestID(strings.TrimSpace(*id), true); err != nil {
+			requestID, err := extensionRequestID(strings.TrimSpace(*id), true)
+			if err != nil {
 				return err
 			}
 			raw, err := serverRequest(ctx, fs.Name(), flags.common, func(ctx context.Context, c *storekitapi.Client) (json.RawMessage, error) {
-				return c.GetStatusOfSubscriptionRenewalDateExtensions(ctx, *product, *id)
+				return c.GetStatusOfSubscriptionRenewalDateExtensions(ctx, *product, requestID)
 			})
 			if err != nil {
 				return err

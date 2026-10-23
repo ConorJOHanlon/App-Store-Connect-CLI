@@ -70,6 +70,14 @@ func TestStoreKitServerActionsRequestContracts(t *testing.T) {
 			args: []string{"subscriptions", "extend-all", "--product-id", "com.example.monthly", "--days", "1", "--reason", "1", "--request-id", requestID, "--confirm"}, want: map[string]any{"requestIdentifier": requestID},
 		},
 		{
+			name: "bulk braced request id", method: "POST", path: "/inApps/v1/subscriptions/extend/mass", body: `{"extendByDays":1,"extendReasonCode":1,"requestIdentifier":"` + requestID + `","productId":"com.example.monthly"}`, response: `{"requestIdentifier":"` + requestID + `"}`, status: 200,
+			args: []string{"subscriptions", "extend-all", "--product-id", "com.example.monthly", "--days", "1", "--reason", "1", "--request-id", "{" + strings.ToUpper(requestID) + "}", "--confirm"}, want: map[string]any{"requestIdentifier": requestID},
+		},
+		{
+			name: "bulk status urn request id", method: "GET", path: "/inApps/v1/subscriptions/extend/mass/com.example.monthly/" + requestID, response: `{"requestIdentifier":"` + requestID + `","complete":false}`, status: 200,
+			args: []string{"subscriptions", "extension-status", "--product-id", "com.example.monthly", "--request-id", "urn:uuid:" + requestID}, want: map[string]any{"requestIdentifier": requestID, "complete": false},
+		},
+		{
 			name: "bulk incomplete status", method: "GET", path: "/inApps/v1/subscriptions/extend/mass/com.example.monthly/" + requestID, response: `{"requestIdentifier":"` + requestID + `","complete":false}`, status: 200,
 			args: []string{"subscriptions", "extension-status", "--product-id", "com.example.monthly", "--request-id", requestID}, want: map[string]any{"requestIdentifier": requestID, "complete": false},
 		},
