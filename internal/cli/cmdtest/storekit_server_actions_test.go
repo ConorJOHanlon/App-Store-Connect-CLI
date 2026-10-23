@@ -17,7 +17,7 @@ import (
 )
 
 // Regression: each action must wire the caller's flags to the exact Apple
-// endpoint and print Apple's response or a receipt on success.
+// endpoint, preserve false/zero/omitted values, and print receipts only on success.
 func TestStoreKitServerActionsRequestContracts(t *testing.T) {
 	const requestID = "11111111-2222-4333-8444-555555555555"
 	tests := []struct {
@@ -136,9 +136,12 @@ func TestStoreKitServerActionsUsageErrors(t *testing.T) {
 		{"consent required", []string{"transactions", "send-consumption", "--transaction-id", "1", "--delivery-status", "DELIVERED", "--sample-content-provided", "false", "--confirm"}, "--customer-consented must be explicitly true"},
 		{"consent false", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "false", "--delivery-status", "DELIVERED", "--sample-content-provided", "false", "--confirm"}, "--customer-consented must be explicitly true"},
 		{"sample required", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--delivery-status", "DELIVERED", "--confirm"}, "--sample-content-provided is required"},
+		{"delivery required", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--confirm"}, "--delivery-status is required"},
 		{"delivery enum", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "OTHER", "--confirm"}, "--delivery-status must be one of"},
 		{"percentage range", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "DELIVERED", "--consumption-percentage", "100001", "--confirm"}, "--consumption-percentage must be between 0 and 100000"},
 		{"undelivered percentage", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "UNDELIVERED_OTHER", "--consumption-percentage", "1", "--confirm"}, "--consumption-percentage must be 0 when delivery status is not DELIVERED"},
+		{"prorated zero", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "DELIVERED", "--refund-preference", "GRANT_PRORATED", "--consumption-percentage", "0", "--confirm"}, "--consumption-percentage must be between 1 and 99999 for GRANT_PRORATED"},
+		{"prorated full before confirm", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "DELIVERED", "--refund-preference", "GRANT_PRORATED", "--consumption-percentage", "100000"}, "--consumption-percentage must be between 1 and 99999 for GRANT_PRORATED"},
 		{"refund enum", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "DELIVERED", "--refund-preference", "YES", "--confirm"}, "--refund-preference must be one of"},
 	}
 	for _, tt := range tests {
@@ -166,8 +169,8 @@ func TestStoreKitServerActionsHumanOutput(t *testing.T) {
 	}{
 		{"app transaction", "table", `{"signedAppTransactionInfo":"` + storeKitTestJWS(`{"appTransactionId":"123","bundleId":"com.example.app","originalApplicationVersion":"1.0","originalPurchaseDate":1788220800000,"receiptType":"Sandbox"}`) + `"}`, []string{"app-transactions", "view", "--transaction-id", "123"}, []string{"App Transaction ID", "Original App Version", "1.0", "com.example.app", "2026-09-01T00:00:00Z"}, true},
 		{"account token", "markdown", ``, []string{"transactions", "set-account-token", "--original-transaction-id", "123", "--app-account-token", id, "--confirm"}, []string{"|123|" + id + "|true|"}, false},
-		{"consumption", "markdown", ``, []string{"transactions", "send-consumption", "--transaction-id", "123", "--customer-consented", "true", "--delivery-status", "DELIVERED", "--sample-content-provided", "false", "--confirm"}, []string{"| Transaction ID | Submitted |", "| 123 | true |"}, false},
-		{"finish", "markdown", ``, []string{"transactions", "finish", "--transaction-id", "123", "--confirm"}, []string{"| Transaction ID | Finished |", "| 123 | true |"}, false},
+		{"consumption", "markdown", ``, []string{"transactions", "send-consumption", "--transaction-id", "123", "--customer-consented", "true", "--delivery-status", "DELIVERED", "--sample-content-provided", "false", "--confirm"}, []string{"|123|true|"}, false},
+		{"finish", "markdown", ``, []string{"transactions", "finish", "--transaction-id", "123", "--confirm"}, []string{"|123|true|"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
