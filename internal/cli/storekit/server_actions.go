@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
@@ -28,7 +27,11 @@ func appTransactionViewCommand() *ffcli.Command {
 	id := fs.String("transaction-id", "", "Any transaction, original transaction, or app transaction ID for the customer")
 	flags := bindServerReadFlags(fs, true)
 	return documentedLeafCommand("view", "asc storekit app-transactions view --transaction-id ID --environment ENV [flags]", "Get a customer's app transaction information.",
-		"Get signed app-purchase information, including the original app version and purchase date.\n\n"+unverifiedJWSHelp, fs, func(ctx context.Context, args []string) error {
+		"Get signed app-purchase information, including the original app version and purchase date.\n\n"+unverifiedJWSHelp+`
+
+Examples:
+  asc storekit app-transactions view --transaction-id 2000000000000001 --environment sandbox
+  asc storekit app-transactions view --transaction-id 2000000000000001 --environment production --decode --output json`, fs, func(ctx context.Context, args []string) error {
 			if err := validateServerRead(args, flags, requiredFlag{"--transaction-id", *id}); err != nil {
 				return err
 			}
@@ -50,21 +53,24 @@ func setAccountTokenCommand() *ffcli.Command {
 	return documentedLeafCommand("set-account-token", "asc storekit transactions set-account-token --original-transaction-id ID --app-account-token UUID --environment ENV --confirm [flags]", "Set or replace a purchase's app account token.",
 		`Set an account association for any purchase type. For auto-renewable subscriptions,
 Apple updates the current and future renewals, leaving past transactions unchanged.
-Family Shared transactions are unsupported. Requires --confirm.`, fs, func(ctx context.Context, args []string) error {
+Family Shared transactions are unsupported. Requires --confirm.
+
+Examples:
+  asc storekit transactions set-account-token --original-transaction-id 2000000000000001 --app-account-token 11111111-2222-4333-8444-555555555555 --environment sandbox --confirm`, fs, func(ctx context.Context, args []string) error {
 			if err := flags.validate(args, requiredFlag{"--original-transaction-id", *id}, requiredFlag{"--app-account-token", *token}); err != nil {
 				return err
 			}
-			if err := validateUUIDFlag("--app-account-token", *token); err != nil {
+			accountToken, err := parseUUIDFlag("--app-account-token", *token)
+			if err != nil {
 				return err
 			}
-			parsed, _ := uuid.Parse(strings.TrimSpace(*token))
-			_, err := serverRequest(ctx, fs.Name(), flags.common, func(ctx context.Context, c *storekitapi.Client) (json.RawMessage, error) {
-				return nil, c.SetAppAccountToken(ctx, *id, parsed.String())
+			_, err = serverRequest(ctx, fs.Name(), flags.common, func(ctx context.Context, c *storekitapi.Client) (json.RawMessage, error) {
+				return nil, c.SetAppAccountToken(ctx, *id, accountToken)
 			})
 			if err != nil {
 				return err
 			}
-			return shared.PrintOutput(&asc.StoreKitAccountTokenResult{OriginalTransactionID: strings.TrimSpace(*id), AppAccountToken: parsed.String(), Updated: true}, *flags.output.Output, *flags.output.Pretty)
+			return shared.PrintOutput(&asc.StoreKitAccountTokenResult{OriginalTransactionID: strings.TrimSpace(*id), AppAccountToken: accountToken, Updated: true}, *flags.output.Output, *flags.output.Pretty)
 		})
 }
 

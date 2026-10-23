@@ -75,7 +75,7 @@ func (c *Client) FinishTransaction(ctx context.Context, transactionID string) er
 	return c.request(ctx, http.MethodPost, path+"/finish", "", nil, nil)
 }
 
-// sendJSON performs one no-content mutation without automatic retries.
+// sendJSON sends value as a JSON body and discards any response body.
 func (c *Client) sendJSON(ctx context.Context, method, path string, value any) error {
 	body, err := jsonBody(value)
 	if err != nil {
