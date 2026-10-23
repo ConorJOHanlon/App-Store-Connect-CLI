@@ -27,8 +27,9 @@ table/Markdown. App transaction reads reuse the existing optional, explicitly
 unverified `--decode`. The signed app transaction uses Apple's
 `originalApplicationVersion` claim for the original-version column. Empty-response mutations print registered camelCase
 receipts; renewal extension responses preserve Apple's body, including
-`success:false` and incomplete status. Diagnostics go to stderr; invalid input
-returns usage exit 2, API/auth failures exit 1. Mutations respect read-only mode
+`success:false` and incomplete status; an individual extension with
+`success:false` then exits 1. Diagnostics go to stderr; invalid input returns
+usage exit 2, API/auth failures exit 1. Mutations respect read-only mode
 and are sent once; the client does not automatically retry them.
 
 ## Request validation and lifecycle
