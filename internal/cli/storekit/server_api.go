@@ -27,12 +27,13 @@ var historyProductTypes = []string{"AUTO_RENEWABLE", "NON_RENEWABLE", "CONSUMABL
 func TransactionsCommand() *ffcli.Command {
 	return groupCommand("transactions",
 		"Read and manage In-App Purchase transactions with the App Store Server API.",
-		`Read In-App Purchase transactions with the App Store Server API.
+		`Read and manage In-App Purchase transactions with the App Store Server API.
 
 Examples:
   asc storekit transactions view --transaction-id 2000000000000001 --environment sandbox
   asc storekit transactions history --transaction-id 2000000000000001 --environment production --paginate
-  asc storekit transactions history --transaction-id 2000000000000001 --product-type AUTO_RENEWABLE --sort DESCENDING --environment production`,
+  asc storekit transactions history --transaction-id 2000000000000001 --product-type AUTO_RENEWABLE --sort DESCENDING --environment production
+  asc storekit transactions set-account-token --original-transaction-id 2000000000000001 --app-account-token 11111111-2222-4333-8444-555555555555 --environment sandbox --confirm`,
 		transactionsViewCommand(), transactionsHistoryCommand(), setAccountTokenCommand())
 }
 
