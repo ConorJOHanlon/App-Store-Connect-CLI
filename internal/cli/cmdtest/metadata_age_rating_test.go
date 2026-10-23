@@ -134,7 +134,7 @@ func TestMetadataAgeRatingApplyFailsWhenReadBackDiffers(t *testing.T) {
 	}
 }
 
-func TestMetadataAgeRatingRejectsMistypedField(t *testing.T) {
+func TestMetadataAgeRatingRejectsInvalidValuesBeforeRequests(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 	withMetadataReviewHTTP(t, func(req *http.Request) (*http.Response, error) {
@@ -142,15 +142,27 @@ func TestMetadataAgeRatingRejectsMistypedField(t *testing.T) {
 		return nil, nil
 	})
 
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "age-rating.json"), []byte(`{"gambling":"true"}`), 0o644); err != nil {
-		t.Fatalf("write age rating: %v", err)
+	tests := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{name: "boolean as string", body: `{"gambling":"true"}`, wantErr: "gambling must be a boolean"},
+		{name: "unknown enum value", body: `{"violenceRealistic":"SOMETIMES"}`, wantErr: "violenceRealistic must be one of NONE, INFREQUENT_OR_MILD"},
 	}
-	stdout, stderr, runErr := runMetadataReviewCommandRaw(t, []string{
-		"metadata", "plan", "--app", "app-1", "--version", "1.2.3", "--dir", dir, "--include", "age-rating",
-		"--review-dir", filepath.Join(t.TempDir(), "review"),
-	})
-	if !errors.Is(runErr, flag.ErrHelp) || stdout != "" || !strings.Contains(stderr, "gambling must be a boolean") {
-		t.Fatalf("err=%v stdout=%q stderr=%q", runErr, stdout, stderr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "age-rating.json"), []byte(test.body), 0o644); err != nil {
+				t.Fatalf("write age rating: %v", err)
+			}
+			stdout, stderr, runErr := runMetadataReviewCommandRaw(t, []string{
+				"metadata", "plan", "--app", "app-1", "--version", "1.2.3", "--dir", dir, "--include", "age-rating",
+				"--review-dir", filepath.Join(t.TempDir(), "review"),
+			})
+			if !errors.Is(runErr, flag.ErrHelp) || stdout != "" || !strings.Contains(stderr, test.wantErr) {
+				t.Fatalf("err=%v stdout=%q stderr=%q", runErr, stdout, stderr)
+			}
+		})
 	}
 }

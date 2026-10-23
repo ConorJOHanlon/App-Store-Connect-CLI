@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -22,8 +23,9 @@ const (
 )
 
 type metadataSettingField struct {
-	name string
-	kind metadataSettingFieldKind
+	name   string
+	kind   metadataSettingFieldKind
+	values []string
 }
 
 type metadataSettingTarget struct {
@@ -173,6 +175,9 @@ func decodeMetadataSettingValue(field metadataSettingField, raw json.RawMessage)
 		value = strings.TrimSpace(value)
 		if value == "" {
 			return "", fmt.Errorf("%s cannot be empty; omit it to leave the value unchanged", field.name)
+		}
+		if len(field.values) > 0 && !slices.Contains(field.values, value) {
+			return "", fmt.Errorf("%s must be one of %s", field.name, strings.Join(field.values, ", "))
 		}
 		return value, nil
 	}
