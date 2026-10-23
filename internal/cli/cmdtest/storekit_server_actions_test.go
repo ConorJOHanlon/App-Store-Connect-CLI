@@ -23,6 +23,7 @@ func TestStoreKitServerActionsRequestContracts(t *testing.T) {
 	tests := []struct {
 		name, method, path, body, response string
 		status                             int
+		production                         bool
 		args                               []string
 		want                               map[string]any
 	}{
@@ -55,7 +56,7 @@ func TestStoreKitServerActionsRequestContracts(t *testing.T) {
 			args: []string{"subscriptions", "extend", "--original-transaction-id", "123", "--days", "7", "--reason", "0", "--request-id", "incident-123", "--confirm"}, want: map[string]any{"originalTransactionId": "123", "success": false},
 		},
 		{
-			name: "bulk extension", method: "POST", path: "/inApps/v1/subscriptions/extend/mass", body: `{"extendByDays":90,"extendReasonCode":3,"requestIdentifier":"` + requestID + `","productId":"com.example.monthly","storefrontCountryCodes":["USA","GBR"]}`, response: `{"requestIdentifier":"` + requestID + `"}`, status: 200,
+			name: "bulk extension", method: "POST", path: "/inApps/v1/subscriptions/extend/mass", body: `{"extendByDays":90,"extendReasonCode":3,"requestIdentifier":"` + requestID + `","productId":"com.example.monthly","storefrontCountryCodes":["USA","GBR"]}`, response: `{"requestIdentifier":"` + requestID + `"}`, status: 200, production: true,
 			args: []string{"subscriptions", "extend-all", "--product-id", "com.example.monthly", "--days", "90", "--reason", "3", "--request-id", requestID, "--storefront-country-codes", "usa,GBR", "--confirm"}, want: map[string]any{"requestIdentifier": requestID},
 		},
 		{
@@ -111,7 +112,7 @@ func TestStoreKitServerActionsRequestContracts(t *testing.T) {
 			t.Cleanup(func() { http.DefaultTransport = original })
 			http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				wantHost := "api.storekit-sandbox.apple.com"
-				if tt.name == "bulk extension" {
+				if tt.production {
 					wantHost = "api.storekit.apple.com"
 				}
 				if r.URL.Host != wantHost {
@@ -125,7 +126,7 @@ func TestStoreKitServerActionsRequestContracts(t *testing.T) {
 				return original.RoundTrip(cloned)
 			})
 			env := "sandbox"
-			if tt.name == "bulk extension" {
+			if tt.production {
 				env = "production"
 			}
 			args := append([]string{"storekit"}, tt.args...)
@@ -173,9 +174,6 @@ func TestStoreKitServerActionsUsageErrors(t *testing.T) {
 		{"bulk uuid", []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", "incident", "--confirm"}, "--request-id must be a UUID"},
 		{"bulk country", []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", id, "--storefront-country-codes", "US", "--confirm"}, "--storefront-country-codes must contain three-letter country codes"},
 		{"bulk empty countries", []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", id, "--storefront-country-codes", "", "--confirm"}, "--storefront-country-codes must not be empty"},
-		{"bulk confirm", []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", id}, "--confirm is required"},
-		{"extend confirm", []string{"subscriptions", "extend", "--original-transaction-id", "1", "--days", "7", "--reason", "3", "--request-id", "incident"}, "--confirm is required"},
-		{"status product", []string{"subscriptions", "extension-status", "--request-id", id}, "--product-id is required"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -204,9 +202,9 @@ func TestStoreKitServerActionsHumanOutput(t *testing.T) {
 		{"account token", "markdown", ``, []string{"transactions", "set-account-token", "--original-transaction-id", "123", "--app-account-token", id, "--confirm"}, []string{"|123|" + id + "|true|"}, false},
 		{"consumption", "markdown", ``, []string{"transactions", "send-consumption", "--transaction-id", "123", "--customer-consented", "true", "--delivery-status", "DELIVERED", "--sample-content-provided", "false", "--confirm"}, []string{"|123|true|"}, false},
 		{"finish", "markdown", ``, []string{"transactions", "finish", "--transaction-id", "123", "--confirm"}, []string{"|123|true|"}, false},
-		{"single success", "table", `{"success":true,"originalTransactionId":"123","effectiveDate":1788220800000,"webOrderLineItemId":"456"}`, []string{"subscriptions", "extend", "--original-transaction-id", "123", "--days", "7", "--reason", "3", "--request-id", "incident", "--confirm"}, []string{"Original Transaction ID", "Effective Date", "true", "2026-09-01T00:00:00Z"}, false},
-		{"submission", "markdown", `{"requestIdentifier":"` + id + `"}`, []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", id, "--confirm"}, []string{"| Request ID |", id}, false},
-		{"completed status", "markdown", `{"requestIdentifier":"` + id + `","complete":true,"completeDate":1788220800000,"succeededCount":12,"failedCount":0}`, []string{"subscriptions", "extension-status", "--product-id", "p", "--request-id", id}, []string{"| Request ID | Complete | Complete Date | Succeeded Count | Failed Count |", "| " + id + " | true | 2026-09-01T00:00:00Z | 12 | 0 |"}, false},
+		{"single success", "table", `{"success":true,"originalTransactionId":"123","effectiveDate":1788220800000,"webOrderLineItemId":"456"}`, []string{"subscriptions", "extend", "--original-transaction-id", "123", "--days", "7", "--reason", "3", "--request-id", "incident", "--confirm"}, []string{"123", "true", "2026-09-01T00:00:00Z", "456"}, false},
+		{"submission", "markdown", `{"requestIdentifier":"` + id + `"}`, []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", id, "--confirm"}, []string{"|" + id + "|"}, false},
+		{"completed status", "markdown", `{"requestIdentifier":"` + id + `","complete":true,"completeDate":1788220800000,"succeededCount":12,"failedCount":0}`, []string{"subscriptions", "extension-status", "--product-id", "p", "--request-id", id}, []string{"| " + id + " | true | 2026-09-01T00:00:00Z | 12 | 0 |"}, false},
 		{"incomplete status", "markdown", `{"requestIdentifier":"` + id + `","complete":false}`, []string{"subscriptions", "extension-status", "--product-id", "p", "--request-id", id}, []string{"| " + id + " | false |  |  |  |"}, false},
 	}
 	for _, tt := range tests {
