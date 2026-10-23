@@ -35,9 +35,8 @@ and are sent once; the client does not automatically retry them.
   `deliveryStatus`, `sampleContentProvided`; optional `consumptionPercentage`
   (integer milliunits, 0–100000) and `refundPreference`. Require explicit true
   consent and explicit sample boolean. For non-delivery, a supplied percentage
-  must be zero; omit it for auto-renewable subscriptions.
-  Auto-renewable subscriptions must omit percentage; Apple validates product
-  type, which is not supplied to this endpoint. Do not infer consent or fetch a
+  must be zero; omit it for auto-renewable subscriptions. Apple validates
+  product type, which is not supplied to this endpoint. Do not infer consent or fetch a
   transaction before sending. Send only after CONSUMPTION_REQUEST, within 12h.
 - Finish only after content is delivered; no server finish is needed if the app
   already calls StoreKit's `finish()`.
