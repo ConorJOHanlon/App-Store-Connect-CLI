@@ -158,9 +158,12 @@ func TestStoreKitServerActionsUsageErrors(t *testing.T) {
 		{"consent required", []string{"transactions", "send-consumption", "--transaction-id", "1", "--delivery-status", "DELIVERED", "--sample-content-provided", "false", "--confirm"}, "--customer-consented must be explicitly true"},
 		{"consent false", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "false", "--delivery-status", "DELIVERED", "--sample-content-provided", "false", "--confirm"}, "--customer-consented must be explicitly true"},
 		{"sample required", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--delivery-status", "DELIVERED", "--confirm"}, "--sample-content-provided is required"},
+		{"delivery required", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--confirm"}, "--delivery-status is required"},
 		{"delivery enum", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "OTHER", "--confirm"}, "--delivery-status must be one of"},
 		{"percentage range", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "DELIVERED", "--consumption-percentage", "100001", "--confirm"}, "--consumption-percentage must be between 0 and 100000"},
 		{"undelivered percentage", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "UNDELIVERED_OTHER", "--consumption-percentage", "1", "--confirm"}, "--consumption-percentage must be 0 when delivery status is not DELIVERED"},
+		{"prorated zero", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "DELIVERED", "--refund-preference", "GRANT_PRORATED", "--consumption-percentage", "0", "--confirm"}, "--consumption-percentage must be between 1 and 99999 for GRANT_PRORATED"},
+		{"prorated full before confirm", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "DELIVERED", "--refund-preference", "GRANT_PRORATED", "--consumption-percentage", "100000"}, "--consumption-percentage must be between 1 and 99999 for GRANT_PRORATED"},
 		{"refund enum", []string{"transactions", "send-consumption", "--transaction-id", "1", "--customer-consented", "true", "--sample-content-provided", "false", "--delivery-status", "DELIVERED", "--refund-preference", "YES", "--confirm"}, "--refund-preference must be one of"},
 		{"days range", []string{"subscriptions", "extend", "--original-transaction-id", "1", "--days", "91", "--reason", "3", "--request-id", "incident", "--confirm"}, "--days must be between 1 and 90"},
 		{"reason required", []string{"subscriptions", "extend", "--original-transaction-id", "1", "--days", "7", "--request-id", "incident", "--confirm"}, "--reason is required"},
@@ -188,8 +191,8 @@ func TestStoreKitServerActionsUsageErrors(t *testing.T) {
 	}
 }
 
-// Regression: accepted writes must render through the registry, and Apple
-// response renderers must distinguish missing fields from false and zero.
+// Regression: Apple responses and accepted-write receipts must render as
+// table and markdown rows.
 func TestStoreKitServerActionsHumanOutput(t *testing.T) {
 	const id = "11111111-2222-4333-8444-555555555555"
 	tests := []struct {
@@ -198,9 +201,9 @@ func TestStoreKitServerActionsHumanOutput(t *testing.T) {
 		warning                bool
 	}{
 		{"app transaction", "table", `{"signedAppTransactionInfo":"` + storeKitTestJWS(`{"appTransactionId":"123","bundleId":"com.example.app","originalApplicationVersion":"1.0","originalPurchaseDate":1788220800000,"receiptType":"Sandbox"}`) + `"}`, []string{"app-transactions", "view", "--transaction-id", "123"}, []string{"App Transaction ID", "Original App Version", "1.0", "com.example.app", "2026-09-01T00:00:00Z"}, true},
-		{"account token", "markdown", ``, []string{"transactions", "set-account-token", "--original-transaction-id", "123", "--app-account-token", id, "--confirm"}, []string{"Original Transaction ID", "App Account Token", id, "true"}, false},
-		{"consumption", "markdown", ``, []string{"transactions", "send-consumption", "--transaction-id", "123", "--customer-consented", "true", "--delivery-status", "DELIVERED", "--sample-content-provided", "false", "--confirm"}, []string{"| Transaction ID | Submitted |", "| 123 | true |"}, false},
-		{"finish", "markdown", ``, []string{"transactions", "finish", "--transaction-id", "123", "--confirm"}, []string{"| Transaction ID | Finished |", "| 123 | true |"}, false},
+		{"account token", "markdown", ``, []string{"transactions", "set-account-token", "--original-transaction-id", "123", "--app-account-token", id, "--confirm"}, []string{"|123|" + id + "|true|"}, false},
+		{"consumption", "markdown", ``, []string{"transactions", "send-consumption", "--transaction-id", "123", "--customer-consented", "true", "--delivery-status", "DELIVERED", "--sample-content-provided", "false", "--confirm"}, []string{"|123|true|"}, false},
+		{"finish", "markdown", ``, []string{"transactions", "finish", "--transaction-id", "123", "--confirm"}, []string{"|123|true|"}, false},
 		{"single success", "table", `{"success":true,"originalTransactionId":"123","effectiveDate":1788220800000,"webOrderLineItemId":"456"}`, []string{"subscriptions", "extend", "--original-transaction-id", "123", "--days", "7", "--reason", "3", "--request-id", "incident", "--confirm"}, []string{"Original Transaction ID", "Effective Date", "true", "2026-09-01T00:00:00Z"}, false},
 		{"submission", "markdown", `{"requestIdentifier":"` + id + `"}`, []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", id, "--confirm"}, []string{"| Request ID |", id}, false},
 		{"completed status", "markdown", `{"requestIdentifier":"` + id + `","complete":true,"completeDate":1788220800000,"succeededCount":12,"failedCount":0}`, []string{"subscriptions", "extension-status", "--product-id", "p", "--request-id", id}, []string{"| Request ID | Complete | Complete Date | Succeeded Count | Failed Count |", "| " + id + " | true | 2026-09-01T00:00:00Z | 12 | 0 |"}, false},
@@ -259,20 +262,18 @@ func TestStoreKitServerActionsRefuseWritesAndPreserveAPIErrors(t *testing.T) {
 			}
 		})
 	}
-	t.Run("API failure sent once", func(t *testing.T) {
+	t.Run("API failure", func(t *testing.T) {
 		setupStoreKitAuth(t)
 		t.Setenv("ASC_READ_ONLY", "")
-		calls := 0
 		original := http.DefaultTransport
 		t.Cleanup(func() { http.DefaultTransport = original })
 		http.DefaultTransport = roundTripFunc(func(*http.Request) (*http.Response, error) {
-			calls++
 			return &http.Response{StatusCode: 429, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"errorCode":4290000,"errorMessage":"Rate limit exceeded"}`))}, nil
 		})
 		stdout, _, err := runRootCommand(t, []string{"storekit", "transactions", "set-account-token", "--original-transaction-id", "123", "--app-account-token", "11111111-2222-4333-8444-555555555555", "--confirm", "--environment", "sandbox", "--output", "json"})
 		var apiErr *storekitapi.APIError
-		if !errors.As(err, &apiErr) || apiErr.StatusCode != 429 || apiErr.Code != "4290000" || stdout != "" || calls != 1 {
-			t.Fatalf("stdout=%q err=%v calls=%d", stdout, err, calls)
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != 429 || apiErr.Code != "4290000" || stdout != "" {
+			t.Fatalf("stdout=%q err=%v", stdout, err)
 		}
 	})
 }

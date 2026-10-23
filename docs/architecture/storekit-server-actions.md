@@ -39,9 +39,8 @@ and are sent once; the client does not automatically retry them.
   `deliveryStatus`, `sampleContentProvided`; optional `consumptionPercentage`
   (integer milliunits, 0–100000) and `refundPreference`. Require explicit true
   consent and explicit sample boolean. For non-delivery, a supplied percentage
-  must be zero; omit it for auto-renewable subscriptions.
-  Auto-renewable subscriptions must omit percentage; Apple validates product
-  type, which is not supplied to this endpoint. Do not infer consent or fetch a
+  must be zero; omit it for auto-renewable subscriptions. Apple validates
+  product type, which is not supplied to this endpoint. Do not infer consent or fetch a
   transaction before sending. Send only after CONSUMPTION_REQUEST, within 12h.
 - Extension days are 1–90 and reasons 0–3. Require a caller-supplied request ID,
   maximum 128 characters; bulk IDs must be UUIDs. Reuse the same ID when retrying
