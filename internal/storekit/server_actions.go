@@ -36,6 +36,22 @@ type ConsumptionRequest struct {
 	RefundPreference      RefundPreference `json:"refundPreference,omitempty"`
 }
 
+// ExtendRenewalDateRequest describes one renewal extension. Reuse the same
+// RequestIdentifier when retrying a request with an uncertain outcome.
+type ExtendRenewalDateRequest struct {
+	ExtendByDays      int    `json:"extendByDays"`
+	ExtendReasonCode  int    `json:"extendReasonCode"`
+	RequestIdentifier string `json:"requestIdentifier"`
+}
+
+// MassExtendRenewalDateRequest extends a product's eligible active subscribers.
+// Omitting StorefrontCountryCodes targets all eligible storefronts.
+type MassExtendRenewalDateRequest struct {
+	ExtendRenewalDateRequest
+	ProductID              string   `json:"productId"`
+	StorefrontCountryCodes []string `json:"storefrontCountryCodes,omitempty"`
+}
+
 // GetAppTransactionInfo returns Apple's signed app-purchase information.
 func (c *Client) GetAppTransactionInfo(ctx context.Context, transactionID string) (json.RawMessage, error) {
 	path, err := pathWithID("inApps/v1/transactions/appTransactions/", "transaction ID", transactionID)
@@ -51,9 +67,10 @@ func (c *Client) SetAppAccountToken(ctx context.Context, originalTransactionID, 
 	if err != nil {
 		return err
 	}
-	return c.sendJSON(ctx, http.MethodPut, path+"/appAccountToken", struct {
+	_, err = c.sendJSON(ctx, http.MethodPut, path+"/appAccountToken", struct {
 		AppAccountToken string `json:"appAccountToken"`
 	}{appAccountToken})
+	return err
 }
 
 // SendConsumptionInformation sends v2 consumption information after a
@@ -63,7 +80,8 @@ func (c *Client) SendConsumptionInformation(ctx context.Context, transactionID s
 	if err != nil {
 		return err
 	}
-	return c.sendJSON(ctx, http.MethodPut, path, request)
+	_, err = c.sendJSON(ctx, http.MethodPut, path, request)
+	return err
 }
 
 // FinishTransaction acknowledges delivery. It does not grant an entitlement.
@@ -75,11 +93,44 @@ func (c *Client) FinishTransaction(ctx context.Context, transactionID string) er
 	return c.request(ctx, http.MethodPost, path+"/finish", "", nil, nil)
 }
 
-// sendJSON performs one no-content mutation without automatic retries.
-func (c *Client) sendJSON(ctx context.Context, method, path string, value any) error {
+// ExtendSubscriptionRenewalDate returns Apple's success flag and new date.
+func (c *Client) ExtendSubscriptionRenewalDate(ctx context.Context, originalTransactionID string, request ExtendRenewalDateRequest) (json.RawMessage, error) {
+	path, err := pathWithID("inApps/v1/subscriptions/extend/", "original transaction ID", originalTransactionID)
+	if err != nil {
+		return nil, err
+	}
+	return c.sendJSON(ctx, http.MethodPut, path, request)
+}
+
+// ExtendRenewalDateForAllActiveSubscribers submits an asynchronous operation.
+func (c *Client) ExtendRenewalDateForAllActiveSubscribers(ctx context.Context, request MassExtendRenewalDateRequest) (json.RawMessage, error) {
+	return c.sendJSON(ctx, http.MethodPost, "inApps/v1/subscriptions/extend/mass", request)
+}
+
+// GetStatusOfSubscriptionRenewalDateExtensions returns completion and final
+// counts. Detailed outcomes arrive through RENEWAL_EXTENSION notifications.
+func (c *Client) GetStatusOfSubscriptionRenewalDateExtensions(ctx context.Context, productID, requestID string) (json.RawMessage, error) {
+	path, err := pathWithID("inApps/v1/subscriptions/extend/mass/", "product ID", productID)
+	if err != nil {
+		return nil, err
+	}
+	suffix, err := pathWithID("", "request ID", requestID)
+	if err != nil {
+		return nil, err
+	}
+	return c.getJSON(ctx, path+"/"+suffix, nil)
+}
+
+// sendJSON performs one request without automatic retries. No-content responses
+// remain nil; commands provide typed receipts only after a successful response.
+func (c *Client) sendJSON(ctx context.Context, method, path string, value any) (json.RawMessage, error) {
 	body, err := jsonBody(value)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return c.request(ctx, method, path, "application/json", body, nil)
+	var response json.RawMessage
+	if err := c.request(ctx, method, path, "application/json", body, &response); err != nil {
+		return nil, err
+	}
+	return response, nil
 }

@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"flag"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/peterbourgon/ff/v3/ffcli"
+
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 	storekitapi "github.com/rudrankriyam/App-Store-Connect-CLI/internal/storekit"
@@ -173,6 +176,135 @@ func (f serverWriteFlags) validate(args []string, required ...requiredFlag) erro
 	return nil
 }
 
+type extensionFlags struct {
+	days, reason *int
+	requestID    *string
+}
+
+func bindExtensionFlags(fs *flag.FlagSet) extensionFlags {
+	return extensionFlags{days: fs.Int("days", 0, "Required: number of days to extend (1-90)"), reason: fs.Int("reason", -1, "Required: 0 undeclared, 1 customer satisfaction, 2 other, 3 service issue/outage"), requestID: fs.String("request-id", "", "Required: unique request identifier (max 128 characters; bulk requires UUID); reuse when retrying")}
+}
+
+func (f extensionFlags) request(fs *flag.FlagSet, bulk bool) (storekitapi.ExtendRenewalDateRequest, error) {
+	request := storekitapi.ExtendRenewalDateRequest{ExtendByDays: *f.days, ExtendReasonCode: *f.reason, RequestIdentifier: strings.TrimSpace(*f.requestID)}
+	if *f.days < 1 || *f.days > 90 {
+		return request, shared.UsageError("--days must be between 1 and 90")
+	}
+	if !flagWasSet(fs, "reason") {
+		return request, shared.UsageError("--reason is required")
+	}
+	if *f.reason < 0 || *f.reason > 3 {
+		return request, shared.UsageError("--reason must be between 0 and 3")
+	}
+	if err := validateExtensionRequestID(request.RequestIdentifier, bulk); err != nil {
+		return request, err
+	}
+	return request, nil
+}
+
+func validateExtensionRequestID(value string, bulk bool) error {
+	if err := requireFlag("--request-id", value); err != nil {
+		return err
+	}
+	if utf8.RuneCountInString(value) > 128 {
+		return shared.UsageError("--request-id must be at most 128 characters")
+	}
+	if bulk {
+		return validateUUIDFlag("--request-id", value)
+	}
+	return nil
+}
+
+func extendSubscriptionCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("storekit subscriptions extend", flag.ExitOnError)
+	id := fs.String("original-transaction-id", "", "Original transaction ID of the paid, active subscription")
+	extension := bindExtensionFlags(fs)
+	flags := bindServerWriteFlags(fs)
+	return documentedLeafCommand("extend", "asc storekit subscriptions extend --original-transaction-id ID --days DAYS --reason CODE --request-id ID --environment ENV --confirm [flags]", "Extend one eligible subscription's renewal date.",
+		`Compensate for service interruptions by extending an eligible paid, active
+subscription. Extensions cannot be reversed. Apple limits eligibility and the
+number of extensions. A 200 response can contain success:false; inspect it.
+Reuse the same --request-id to retry an uncertain request. Requires --confirm.`, fs, func(ctx context.Context, args []string) error {
+			if err := flags.validate(args, requiredFlag{"--original-transaction-id", *id}); err != nil {
+				return err
+			}
+			request, err := extension.request(fs, false)
+			if err != nil {
+				return err
+			}
+			raw, err := serverRequest(ctx, fs.Name(), flags.common, func(ctx context.Context, c *storekitapi.Client) (json.RawMessage, error) {
+				return c.ExtendSubscriptionRenewalDate(ctx, *id, request)
+			})
+			if err != nil {
+				return err
+			}
+			return printServerResponse(raw, serverReadFlags{common: flags.common, output: flags.output}, extensionResultTable)
+		})
+}
+
+func extendAllSubscriptionsCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("storekit subscriptions extend-all", flag.ExitOnError)
+	product := fs.String("product-id", "", "Auto-renewable subscription product ID (not its App Store Connect resource ID)")
+	countries := fs.String("storefront-country-codes", "", "Optional comma-separated three-letter storefront codes; omit for all eligible storefronts")
+	extension := bindExtensionFlags(fs)
+	flags := bindServerWriteFlags(fs)
+	return documentedLeafCommand("extend-all", "asc storekit subscriptions extend-all --product-id PRODUCT --days DAYS --reason CODE --request-id UUID --environment ENV --confirm [flags]", "Request renewal extensions for all eligible subscribers of a product.",
+		`Submit an asynchronous renewal extension. Omitting --storefront-country-codes
+targets all eligible storefronts. Extensions cannot be reversed. A successful
+submission only acknowledges processing; use extension-status or receive
+RENEWAL_EXTENSION notifications for outcomes. Reuse the same --request-id UUID
+when retrying an uncertain request. Requires --confirm.`, fs, func(ctx context.Context, args []string) error {
+			if err := flags.validate(args, requiredFlag{"--product-id", *product}); err != nil {
+				return err
+			}
+			request, err := extension.request(fs, true)
+			if err != nil {
+				return err
+			}
+			codes := shared.SplitCSVUpper(*countries)
+			if flagWasSet(fs, "storefront-country-codes") && len(codes) == 0 {
+				return shared.UsageError("--storefront-country-codes must not be empty")
+			}
+			for _, code := range codes {
+				if len(code) != 3 || strings.IndexFunc(code, func(r rune) bool { return r < 'A' || r > 'Z' }) >= 0 {
+					return shared.UsageError("--storefront-country-codes must contain three-letter country codes")
+				}
+			}
+			raw, err := serverRequest(ctx, fs.Name(), flags.common, func(ctx context.Context, c *storekitapi.Client) (json.RawMessage, error) {
+				return c.ExtendRenewalDateForAllActiveSubscribers(ctx, storekitapi.MassExtendRenewalDateRequest{ExtendRenewalDateRequest: request, ProductID: strings.TrimSpace(*product), StorefrontCountryCodes: codes})
+			})
+			if err != nil {
+				return err
+			}
+			return printServerResponse(raw, serverReadFlags{common: flags.common, output: flags.output}, extensionSubmissionTable)
+		})
+}
+
+func extensionStatusCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("storekit subscriptions extension-status", flag.ExitOnError)
+	product := fs.String("product-id", "", "Subscription product ID used in the bulk extension request")
+	id := fs.String("request-id", "", "Request UUID used in the bulk extension request")
+	flags := bindServerReadFlags(fs, false)
+	return documentedLeafCommand("extension-status", "asc storekit subscriptions extension-status --product-id PRODUCT --request-id UUID --environment ENV [flags]", "Check bulk renewal-extension completion and final counts.",
+		`Get the status of a bulk renewal extension without polling automatically.
+Processing may take hours or days. Final counts appear when complete is true.
+Detailed outcomes are delivered through RENEWAL_EXTENSION notifications.`, fs, func(ctx context.Context, args []string) error {
+			if err := validateServerRead(args, flags, requiredFlag{"--product-id", *product}, requiredFlag{"--request-id", *id}); err != nil {
+				return err
+			}
+			if err := validateExtensionRequestID(strings.TrimSpace(*id), true); err != nil {
+				return err
+			}
+			raw, err := serverRequest(ctx, fs.Name(), flags.common, func(ctx context.Context, c *storekitapi.Client) (json.RawMessage, error) {
+				return c.GetStatusOfSubscriptionRenewalDateExtensions(ctx, *product, *id)
+			})
+			if err != nil {
+				return err
+			}
+			return printServerResponse(raw, flags, extensionStatusTable)
+		})
+}
+
 func appTransactionInfoTable(raw json.RawMessage) ([]string, [][]string, error) {
 	var response struct {
 		SignedAppTransactionInfo string `json:"signedAppTransactionInfo"`
@@ -191,4 +323,55 @@ func appTransactionInfoTable(raw json.RawMessage) ([]string, [][]string, error) 
 		return nil, nil, err
 	}
 	return []string{"App Transaction ID", "Bundle ID", "Original App Version", "Original Purchase Date", "Receipt Type"}, [][]string{{claims.AppTransactionID, claims.BundleID, claims.OriginalApplicationVersion, formatMillis(claims.OriginalPurchaseDate), claims.ReceiptType}}, nil
+}
+
+func extensionResultTable(raw json.RawMessage) ([]string, [][]string, error) {
+	var response struct {
+		OriginalTransactionID string `json:"originalTransactionId"`
+		Success               *bool  `json:"success"`
+		EffectiveDate         int64  `json:"effectiveDate"`
+		WebOrderLineItemID    string `json:"webOrderLineItemId"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return nil, nil, err
+	}
+	return []string{"Original Transaction ID", "Success", "Effective Date", "Web Order Line Item ID"}, [][]string{{response.OriginalTransactionID, optionalBoolText(response.Success), formatMillis(response.EffectiveDate), response.WebOrderLineItemID}}, nil
+}
+
+func extensionSubmissionTable(raw json.RawMessage) ([]string, [][]string, error) {
+	var response struct {
+		RequestIdentifier string `json:"requestIdentifier"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return nil, nil, err
+	}
+	return []string{"Request ID"}, [][]string{{response.RequestIdentifier}}, nil
+}
+
+func extensionStatusTable(raw json.RawMessage) ([]string, [][]string, error) {
+	var response struct {
+		RequestIdentifier string `json:"requestIdentifier"`
+		Complete          *bool  `json:"complete"`
+		CompleteDate      int64  `json:"completeDate"`
+		SucceededCount    *int64 `json:"succeededCount"`
+		FailedCount       *int64 `json:"failedCount"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return nil, nil, err
+	}
+	return []string{"Request ID", "Complete", "Complete Date", "Succeeded Count", "Failed Count"}, [][]string{{response.RequestIdentifier, optionalBoolText(response.Complete), formatMillis(response.CompleteDate), optionalCountText(response.SucceededCount), optionalCountText(response.FailedCount)}}, nil
+}
+
+func optionalBoolText(value *bool) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.FormatBool(*value)
+}
+
+func optionalCountText(value *int64) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.FormatInt(*value, 10)
 }
