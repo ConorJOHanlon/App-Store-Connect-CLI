@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -258,7 +259,16 @@ Reuse the same --request-id to retry an uncertain request. Requires --confirm.`,
 			if err != nil {
 				return err
 			}
-			return printServerResponse(raw, serverReadFlags{common: flags.common, output: flags.output}, extensionResultTable)
+			if err := printServerResponse(raw, serverReadFlags{common: flags.common, output: flags.output}, extensionResultTable); err != nil {
+				return err
+			}
+			var result struct {
+				Success *bool `json:"success"`
+			}
+			if err := json.Unmarshal(raw, &result); err == nil && result.Success != nil && !*result.Success {
+				return shared.NewReportedError(fmt.Errorf("%s: Apple did not extend the renewal date (success is false)", fs.Name()))
+			}
+			return nil
 		})
 }
 

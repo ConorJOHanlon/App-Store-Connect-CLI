@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	rootcmd "github.com/rudrankriyam/App-Store-Connect-CLI/cmd"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/readonly"
 	storekitapi "github.com/rudrankriyam/App-Store-Connect-CLI/internal/storekit"
 )
@@ -24,6 +25,7 @@ func TestStoreKitServerActionsRequestContracts(t *testing.T) {
 		name, method, path, body, response string
 		status                             int
 		production                         bool
+		wantErr                            string
 		args                               []string
 		want                               map[string]any
 	}{
@@ -56,7 +58,7 @@ func TestStoreKitServerActionsRequestContracts(t *testing.T) {
 			args: []string{"transactions", "finish", "--transaction-id", "123", "--confirm"}, want: map[string]any{"transactionId": "123", "finished": true},
 		},
 		{
-			name: "individual extension unsuccessful", method: "PUT", path: "/inApps/v1/subscriptions/extend/123", body: `{"extendByDays":7,"extendReasonCode":0,"requestIdentifier":"incident-123"}`, response: `{"originalTransactionId":"123","success":false}`, status: 200,
+			name: "individual extension unsuccessful", method: "PUT", path: "/inApps/v1/subscriptions/extend/123", body: `{"extendByDays":7,"extendReasonCode":0,"requestIdentifier":"incident-123"}`, response: `{"originalTransactionId":"123","success":false}`, status: 200, wantErr: "Apple did not extend the renewal date",
 			args: []string{"subscriptions", "extend", "--original-transaction-id", "123", "--days", "7", "--reason", "0", "--request-id", "incident-123", "--confirm"}, want: map[string]any{"originalTransactionId": "123", "success": false},
 		},
 		{
@@ -135,7 +137,13 @@ func TestStoreKitServerActionsRequestContracts(t *testing.T) {
 			}
 			args := append([]string{"storekit"}, tt.args...)
 			args = append(args, "--environment", env, "--output", "json")
-			stdout, stderr := runStoreKitCommand(t, args...)
+			stdout, stderr, err := runRootCommand(t, args)
+			if tt.wantErr == "" && err != nil {
+				t.Fatalf("run error: %v", err)
+			}
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr) || rootcmd.ExitCodeFromError(err) != rootcmd.ExitError) {
+				t.Fatalf("err=%v exit=%d want %q", err, rootcmd.ExitCodeFromError(err), tt.wantErr)
+			}
 			var got map[string]any
 			if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 				t.Fatalf("JSON %q: %v", stdout, err)
