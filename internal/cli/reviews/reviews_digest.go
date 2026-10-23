@@ -72,7 +72,12 @@ Examples:
   asc reviews digest --app "123456789" --since 2026-10-01
   asc reviews digest --app "123456789" --since 2026-10-01T00:00:00Z --output table
   asc reviews digest --app "123456789" --state-file reviews-cursor.json --since 2026-10-01 --write-state
-  asc notify slack --message "New customer reviews" --payload-json "$(asc reviews digest --app "123456789" --state-file reviews-cursor.json --since 2026-10-01 --write-state --output json)"`,
+
+Send to Slack and advance the cursor only after Slack accepts the digest
+(skip the cp on the first run, before reviews-cursor.json exists):
+  cp reviews-cursor.json next-cursor.json
+  asc reviews digest --app "123456789" --state-file next-cursor.json --since 2026-10-01 --write-state --output json > digest.json
+  asc notify slack --message "New customer reviews" --payload-file digest.json && mv next-cursor.json reviews-cursor.json`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
