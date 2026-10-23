@@ -193,6 +193,7 @@ func TestStoreKitServerActionsUsageErrors(t *testing.T) {
 		{"request length", []string{"subscriptions", "extend", "--original-transaction-id", "1", "--days", "7", "--reason", "3", "--request-id", strings.Repeat("a", 129), "--confirm"}, "--request-id must be at most 128 characters"},
 		{"bulk uuid", []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", "incident", "--confirm"}, "--request-id must be a UUID"},
 		{"bulk country", []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", id, "--storefront-country-codes", "US", "--confirm"}, "--storefront-country-codes must contain three-letter country codes"},
+		{"bulk country before confirm", []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", id, "--storefront-country-codes", "US"}, "--storefront-country-codes must contain three-letter country codes"},
 		{"bulk empty countries", []string{"subscriptions", "extend-all", "--product-id", "p", "--days", "7", "--reason", "3", "--request-id", id, "--storefront-country-codes", "", "--confirm"}, "--storefront-country-codes must not be empty"},
 	}
 	for _, tt := range tests {

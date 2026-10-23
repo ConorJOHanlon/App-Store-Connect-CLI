@@ -245,11 +245,11 @@ func extendSubscriptionCommand() *ffcli.Command {
 subscription. Extensions cannot be reversed. Apple limits eligibility and the
 number of extensions. A 200 response can contain success:false; inspect it.
 Reuse the same --request-id to retry an uncertain request. Requires --confirm.`, fs, func(ctx context.Context, args []string) error {
-			if err := flags.validate(args, nil, requiredFlag{"--original-transaction-id", *id}); err != nil {
+			var request storekitapi.ExtendRenewalDateRequest
+			if err := flags.validate(args, func() (err error) {
+				request, err = extension.request(fs, false)
 				return err
-			}
-			request, err := extension.request(fs, false)
-			if err != nil {
+			}, requiredFlag{"--original-transaction-id", *id}); err != nil {
 				return err
 			}
 			raw, err := serverRequest(ctx, fs.Name(), flags.common, func(ctx context.Context, c *storekitapi.Client) (json.RawMessage, error) {
@@ -283,21 +283,23 @@ targets all eligible storefronts. Extensions cannot be reversed. A successful
 submission only acknowledges processing; use extension-status or receive
 RENEWAL_EXTENSION notifications for outcomes. Reuse the same --request-id UUID
 when retrying an uncertain request. Requires --confirm.`, fs, func(ctx context.Context, args []string) error {
-			if err := flags.validate(args, nil, requiredFlag{"--product-id", *product}); err != nil {
-				return err
-			}
-			request, err := extension.request(fs, true)
-			if err != nil {
-				return err
-			}
+			var request storekitapi.ExtendRenewalDateRequest
 			codes := shared.SplitCSVUpper(*countries)
-			if flagWasSet(fs, "storefront-country-codes") && len(codes) == 0 {
-				return shared.UsageError("--storefront-country-codes must not be empty")
-			}
-			for _, code := range codes {
-				if len(code) != 3 || strings.IndexFunc(code, func(r rune) bool { return r < 'A' || r > 'Z' }) >= 0 {
-					return shared.UsageError("--storefront-country-codes must contain three-letter country codes")
+			if err := flags.validate(args, func() (err error) {
+				if request, err = extension.request(fs, true); err != nil {
+					return err
 				}
+				if flagWasSet(fs, "storefront-country-codes") && len(codes) == 0 {
+					return shared.UsageError("--storefront-country-codes must not be empty")
+				}
+				for _, code := range codes {
+					if len(code) != 3 || strings.IndexFunc(code, func(r rune) bool { return r < 'A' || r > 'Z' }) >= 0 {
+						return shared.UsageError("--storefront-country-codes must contain three-letter country codes")
+					}
+				}
+				return nil
+			}, requiredFlag{"--product-id", *product}); err != nil {
+				return err
 			}
 			raw, err := serverRequest(ctx, fs.Name(), flags.common, func(ctx context.Context, c *storekitapi.Client) (json.RawMessage, error) {
 				return c.ExtendRenewalDateForAllActiveSubscribers(ctx, storekitapi.MassExtendRenewalDateRequest{ExtendRenewalDateRequest: request, ProductID: strings.TrimSpace(*product), StorefrontCountryCodes: codes})
