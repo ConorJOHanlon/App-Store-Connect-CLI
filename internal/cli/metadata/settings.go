@@ -49,7 +49,7 @@ type metadataSettingPlan struct {
 }
 
 func metadataSettingScopes() []metadataSettingScope {
-	return []metadataSettingScope{}
+	return []metadataSettingScope{ageRatingSettingScope}
 }
 
 func metadataSettingScopeNames() []string {
