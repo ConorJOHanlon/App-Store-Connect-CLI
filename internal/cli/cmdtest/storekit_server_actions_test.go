@@ -36,6 +36,10 @@ func TestStoreKitServerActionsRequestContracts(t *testing.T) {
 			args: []string{"transactions", "set-account-token", "--original-transaction-id", "123", "--app-account-token", requestID, "--confirm"}, want: map[string]any{"originalTransactionId": "123", "appAccountToken": requestID, "updated": true},
 		},
 		{
+			name: "account token non-JSON success", method: "PUT", path: "/inApps/v1/transactions/123/appAccountToken", body: `{"appAccountToken":"` + requestID + `"}`, response: "OK", status: 200,
+			args: []string{"transactions", "set-account-token", "--original-transaction-id", "123", "--app-account-token", requestID, "--confirm"}, want: map[string]any{"originalTransactionId": "123", "appAccountToken": requestID, "updated": true},
+		},
+		{
 			name: "consumption omitted percentage", method: "PUT", path: "/inApps/v2/transactions/consumption/123", body: `{"customerConsented":true,"deliveryStatus":"DELIVERED","sampleContentProvided":false,"refundPreference":"GRANT_PRORATED"}`, status: 202,
 			args: []string{"transactions", "send-consumption", "--transaction-id", "123", "--customer-consented", "true", "--delivery-status", "delivered", "--sample-content-provided", "false", "--refund-preference", "grant_prorated", "--confirm"}, want: map[string]any{"transactionId": "123", "submitted": true},
 		},

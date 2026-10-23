@@ -67,10 +67,9 @@ func (c *Client) SetAppAccountToken(ctx context.Context, originalTransactionID, 
 	if err != nil {
 		return err
 	}
-	_, err = c.sendJSON(ctx, http.MethodPut, path+"/appAccountToken", struct {
+	return c.sendJSON(ctx, http.MethodPut, path+"/appAccountToken", struct {
 		AppAccountToken string `json:"appAccountToken"`
-	}{appAccountToken})
-	return err
+	}{appAccountToken}, nil)
 }
 
 // SendConsumptionInformation sends v2 consumption information after a
@@ -80,8 +79,7 @@ func (c *Client) SendConsumptionInformation(ctx context.Context, transactionID s
 	if err != nil {
 		return err
 	}
-	_, err = c.sendJSON(ctx, http.MethodPut, path, request)
-	return err
+	return c.sendJSON(ctx, http.MethodPut, path, request, nil)
 }
 
 // FinishTransaction acknowledges delivery. It does not grant an entitlement.
@@ -99,12 +97,16 @@ func (c *Client) ExtendSubscriptionRenewalDate(ctx context.Context, originalTran
 	if err != nil {
 		return nil, err
 	}
-	return c.sendJSON(ctx, http.MethodPut, path, request)
+	var response json.RawMessage
+	err = c.sendJSON(ctx, http.MethodPut, path, request, &response)
+	return response, err
 }
 
 // ExtendRenewalDateForAllActiveSubscribers submits an asynchronous operation.
 func (c *Client) ExtendRenewalDateForAllActiveSubscribers(ctx context.Context, request MassExtendRenewalDateRequest) (json.RawMessage, error) {
-	return c.sendJSON(ctx, http.MethodPost, "inApps/v1/subscriptions/extend/mass", request)
+	var response json.RawMessage
+	err := c.sendJSON(ctx, http.MethodPost, "inApps/v1/subscriptions/extend/mass", request, &response)
+	return response, err
 }
 
 // GetStatusOfSubscriptionRenewalDateExtensions returns completion and final
@@ -121,16 +123,12 @@ func (c *Client) GetStatusOfSubscriptionRenewalDateExtensions(ctx context.Contex
 	return c.getJSON(ctx, path+"/"+suffix, nil)
 }
 
-// sendJSON performs one request without automatic retries. No-content responses
-// remain nil; commands provide typed receipts only after a successful response.
-func (c *Client) sendJSON(ctx context.Context, method, path string, value any) (json.RawMessage, error) {
+// sendJSON sends value as a JSON body. A nil response discards the response
+// body, so callers that need no body do not fail on an empty or non-JSON one.
+func (c *Client) sendJSON(ctx context.Context, method, path string, value, response any) error {
 	body, err := jsonBody(value)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var response json.RawMessage
-	if err := c.request(ctx, method, path, "application/json", body, &response); err != nil {
-		return nil, err
-	}
-	return response, nil
+	return c.request(ctx, method, path, "application/json", body, response)
 }
