@@ -68,13 +68,21 @@ func metadataIncludeFlagUsage() string {
 func metadataSettingsHelp(indent string, withFields bool) string {
 	lines := []string{}
 	for _, scope := range metadataSettingScopes() {
-		line := fmt.Sprintf("%s- %s: <dir>/%s", indent, scope.name, scope.fileName)
-		if withFields {
-			fields := []string{}
-			for _, field := range scope.fields {
-				fields = append(fields, field.name)
+		lines = append(lines, fmt.Sprintf("%s- %s: <dir>/%s", indent, scope.name, scope.fileName))
+		if !withFields {
+			continue
+		}
+		line := indent + "   "
+		for i, field := range scope.fields {
+			name := field.name
+			if i < len(scope.fields)-1 {
+				name += ","
 			}
-			line += " (" + strings.Join(fields, ", ") + ")"
+			if len(line)+len(name)+1 > 100 {
+				lines = append(lines, line)
+				line = indent + "   "
+			}
+			line += " " + name
 		}
 		lines = append(lines, line)
 	}
