@@ -27,8 +27,7 @@ func (c *Client) SetAppAccountToken(ctx context.Context, originalTransactionID, 
 	return err
 }
 
-// sendJSON performs one request without automatic retries. No-content responses
-// remain nil; commands provide typed receipts only after a successful response.
+// sendJSON sends value as a JSON body. No-content responses remain nil.
 func (c *Client) sendJSON(ctx context.Context, method, path string, value any) (json.RawMessage, error) {
 	body, err := jsonBody(value)
 	if err != nil {

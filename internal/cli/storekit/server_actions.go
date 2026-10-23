@@ -6,7 +6,6 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
@@ -60,17 +59,17 @@ Examples:
 			if err := flags.validate(args, requiredFlag{"--original-transaction-id", *id}, requiredFlag{"--app-account-token", *token}); err != nil {
 				return err
 			}
-			if err := validateUUIDFlag("--app-account-token", *token); err != nil {
+			accountToken, err := parseUUIDFlag("--app-account-token", *token)
+			if err != nil {
 				return err
 			}
-			parsed, _ := uuid.Parse(strings.TrimSpace(*token))
-			_, err := serverRequest(ctx, fs.Name(), flags.common, func(ctx context.Context, c *storekitapi.Client) (json.RawMessage, error) {
-				return nil, c.SetAppAccountToken(ctx, *id, parsed.String())
+			_, err = serverRequest(ctx, fs.Name(), flags.common, func(ctx context.Context, c *storekitapi.Client) (json.RawMessage, error) {
+				return nil, c.SetAppAccountToken(ctx, *id, accountToken)
 			})
 			if err != nil {
 				return err
 			}
-			return shared.PrintOutput(&asc.StoreKitAccountTokenResult{OriginalTransactionID: strings.TrimSpace(*id), AppAccountToken: parsed.String(), Updated: true}, *flags.output.Output, *flags.output.Pretty)
+			return shared.PrintOutput(&asc.StoreKitAccountTokenResult{OriginalTransactionID: strings.TrimSpace(*id), AppAccountToken: accountToken, Updated: true}, *flags.output.Output, *flags.output.Pretty)
 		})
 }
 
