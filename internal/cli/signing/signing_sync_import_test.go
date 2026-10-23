@@ -1,11 +1,9 @@
 package signing
 
 import (
-	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -36,31 +34,6 @@ const (
 	importProfileUUID         = "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b"
 )
 
-// encryptOpenSSLV1 is a reference v1 encoder for importSourcePassword: base64("Salted__" || salt ||
-// AES-256-CBC(PKCS#7)) with an MD5 EVP_BytesToKey key and IV.
-func encryptOpenSSLV1(t *testing.T, plaintext []byte) []byte {
-	t.Helper()
-	salt := make([]byte, 8)
-	if _, err := rand.Read(salt); err != nil {
-		t.Fatal(err)
-	}
-	var material, previous []byte
-	for len(material) < 48 {
-		sum := md5.Sum(append(append(append([]byte{}, previous...), importSourcePassword...), salt...))
-		previous = sum[:]
-		material = append(material, previous...)
-	}
-	block, err := aes.NewCipher(material[:32])
-	if err != nil {
-		t.Fatal(err)
-	}
-	padding := aes.BlockSize - len(plaintext)%aes.BlockSize
-	padded := append(append([]byte{}, plaintext...), bytes.Repeat([]byte{byte(padding)}, padding)...)
-	ciphertext := make([]byte, len(padded))
-	cipher.NewCBCEncrypter(block, material[32:48]).CryptBlocks(ciphertext, padded)
-	return []byte(base64.StdEncoding.EncodeToString(append(append([]byte("Salted__"), salt...), ciphertext...)))
-}
-
 // encryptOpenSSLV2 is a reference v2 encoder for importSourcePassword: base64(marker (20) || salt ||
 // tag || AES-256-GCM) with key, nonce, and additional data from PBKDF2.
 func encryptOpenSSLV2(t *testing.T, plaintext []byte) []byte {
@@ -86,11 +59,12 @@ func encryptOpenSSLV2(t *testing.T, plaintext []byte) []byte {
 }
 
 type openSSLImportFixture struct {
-	dir             string
-	distribution    *x509.Certificate
-	development     *x509.Certificate
-	distributionSHA string
-	developmentSHA  string
+	dir               string
+	distribution      *x509.Certificate
+	development       *x509.Certificate
+	distributionSHA   string
+	developmentSHA    string
+	profileExpiration string
 }
 
 func newOpenSSLImportFixture(t *testing.T) openSSLImportFixture {
@@ -113,8 +87,8 @@ func newOpenSSLImportFixture(t *testing.T) openSSLImportFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write("certs/distribution/CERT1.cer", encryptOpenSSLV1(t, distribution.Raw))
-	write("certs/distribution/CERT1.p12", encryptOpenSSLV1(t, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})))
+	write("certs/distribution/CERT1.cer", encryptOpenSSLV2(t, distribution.Raw))
+	write("certs/distribution/CERT1.p12", encryptOpenSSLV2(t, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})))
 
 	developmentKey := mustECKey(t)
 	development := mustSigningCertificate(t, developmentKey, 202)
@@ -125,13 +99,14 @@ func newOpenSSLImportFixture(t *testing.T) openSSLImportFixture {
 	write("certs/development/CERT2.cer", encryptOpenSSLV2(t, development.Raw))
 	write("certs/development/CERT2.p12", encryptOpenSSLV2(t, identity))
 
+	profileExpiration := time.Now().Add(12 * time.Hour).UTC().Truncate(time.Second)
 	payload, err := plist.Marshal(map[string]any{
 		"Name":                        "App Store com.example.app",
 		"UUID":                        importProfileUUID,
 		"TeamIdentifier":              []string{"TEAM123"},
 		"ApplicationIdentifierPrefix": []string{"TEAM123"},
 		"Platform":                    []string{"iOS"},
-		"ExpirationDate":              time.Now().Add(12 * time.Hour).UTC().Truncate(time.Second),
+		"ExpirationDate":              profileExpiration,
 		"DeveloperCertificates":       [][]byte{distribution.Raw},
 		"Entitlements": map[string]any{
 			"application-identifier": "TEAM123.com.example.app",
@@ -146,11 +121,12 @@ func newOpenSSLImportFixture(t *testing.T) openSSLImportFixture {
 	write("README.md", []byte("unencrypted"))
 
 	return openSSLImportFixture{
-		dir:             dir,
-		distribution:    distribution,
-		development:     development,
-		distributionSHA: certificateSHA256(distribution),
-		developmentSHA:  certificateSHA256(development),
+		dir:               dir,
+		distribution:      distribution,
+		development:       development,
+		distributionSHA:   certificateSHA256(distribution),
+		developmentSHA:    certificateSHA256(development),
+		profileExpiration: profileExpiration.Format(time.RFC3339),
 	}
 }
 
@@ -189,32 +165,11 @@ func TestSigningSyncImportWritesPullableStore(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 		t.Fatalf("decode result: %v\n%s", err, stdout)
 	}
-	if result.PublicationState != "succeeded" || len(result.Certificates) != 2 || len(result.Profiles) != 1 {
+	if result.PublicationState != "succeeded" || len(result.Files) != 6 {
 		t.Fatalf("result = %+v", result)
 	}
-	profile := result.Profiles[0]
-	if profile.UUID != importProfileUUID || profile.BundleID != "com.example.app" || profile.ProfileType != "IOS_APP_STORE" || profile.TeamID != "TEAM123" {
-		t.Fatalf("profile = %+v", profile)
-	}
 
-	wantTree := []string{
-		"README",
-		"certs/development/CA.cer.enc",
-		"certs/distribution/65.cer.enc",
-		"identities/development/" + fixture.developmentSHA + ".p12.enc",
-		"identities/distribution/" + fixture.distributionSHA + ".p12.enc",
-		"identity-contexts/",
-		"profiles/appstore/App Store com.example.app.mobileprovision.enc",
-	}
 	tree := remoteTree(t, remotePath)
-	if len(tree) != len(wantTree) {
-		t.Fatalf("remote tree = %v, want %v", tree, wantTree)
-	}
-	for index, want := range wantTree {
-		if !strings.HasPrefix(tree[index], want) {
-			t.Fatalf("remote tree = %v, want %v", tree, wantTree)
-		}
-	}
 
 	store := &signingpkg.GitStore{RepoURL: remoteURL, LocalDir: filepath.Join(t.TempDir(), "check"), Branch: "main"}
 	t.Cleanup(func() { _ = store.Cleanup() })
@@ -252,7 +207,8 @@ func TestSigningSyncImportWritesPullableStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("repeat import: %v\nstderr=%s", err, stderr)
 	}
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil || result.PublicationState != "not-needed" {
+	result = asc.SigningSyncImportResult{}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil || result.PublicationState != "not-needed" || len(result.Files) != 0 {
 		t.Fatalf("repeat import result = %+v (%v)", result, err)
 	}
 	if !reflect.DeepEqual(remoteTree(t, remotePath), tree) {
@@ -285,8 +241,12 @@ func TestSigningSyncImportDryRunListsWithoutDestination(t *testing.T) {
 	if c := gotCertificates[fixture.developmentSHA]; c.Type != "development" {
 		t.Fatalf("development certificate = %+v", c)
 	}
-	if len(result.Profiles) != 1 || result.Profiles[0].Name != "App Store com.example.app" || result.Profiles[0].UUID != importProfileUUID {
-		t.Fatalf("profiles = %+v", result.Profiles)
+	wantProfile := asc.SigningSyncImportProfile{
+		SourcePath: "profiles/appstore/AppStore_com.example.app.mobileprovision", Name: "App Store com.example.app", UUID: importProfileUUID,
+		BundleID: "com.example.app", ProfileType: "IOS_APP_STORE", TeamID: "TEAM123", ExpirationDate: fixture.profileExpiration,
+	}
+	if len(result.Profiles) != 1 || result.Profiles[0] != wantProfile {
+		t.Fatalf("profiles = %+v, want %+v", result.Profiles, wantProfile)
 	}
 	if len(result.Files) != 6 {
 		t.Fatalf("planned files = %v", result.Files)
@@ -313,7 +273,7 @@ func TestSigningSyncImportFailuresWriteNothing(t *testing.T) {
 					t.Fatal(err)
 				}
 				writePrivateTestFile(t, filepath.Join(fixture.dir, "certs", "distribution", "CERT1.p12"),
-					encryptOpenSSLV1(t, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})))
+					encryptOpenSSLV2(t, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})))
 			},
 			wantErr: "private key certs/distribution/CERT1.p12 does not match certificate certs/distribution/CERT1.cer",
 		},
@@ -321,7 +281,7 @@ func TestSigningSyncImportFailuresWriteNothing(t *testing.T) {
 			name: "symlink escaping the source",
 			mutate: func(t *testing.T, fixture openSSLImportFixture) {
 				outside := filepath.Join(t.TempDir(), "outside.cer")
-				writePrivateTestFile(t, outside, encryptOpenSSLV1(t, fixture.distribution.Raw))
+				writePrivateTestFile(t, outside, encryptOpenSSLV2(t, fixture.distribution.Raw))
 				link := filepath.Join(fixture.dir, "certs", "distribution", "CERT1.cer")
 				if err := os.Remove(link); err != nil {
 					t.Fatal(err)

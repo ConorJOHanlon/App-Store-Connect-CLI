@@ -27,9 +27,6 @@ import (
 	signingpkg "github.com/rudrankriyam/App-Store-Connect-CLI/internal/signing"
 )
 
-// SyncImportResult is the structured output for signing sync import.
-type SyncImportResult = asc.SigningSyncImportResult
-
 const maxOpenSSLImportFileSize = 4 << 20
 
 type openSSLImportCertificate struct {
@@ -48,7 +45,6 @@ type openSSLImportProfile struct {
 	uuid        string
 	bundleID    string
 	profileType string
-	extension   string
 }
 
 type openSSLImportWrite struct {
@@ -150,7 +146,7 @@ Examples:
 				return fmt.Errorf("signing sync import: %w", err)
 			}
 
-			result := SyncImportResult{
+			result := asc.SigningSyncImportResult{
 				Operation:        "import",
 				Source:           sourceLabel,
 				DryRun:           *dryRun,
@@ -199,7 +195,7 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("signing sync import: %w", err)
 			}
-			result.Files = openSSLImportWritePaths(writes)
+			result.Files = written
 			if len(written) == 0 {
 				result.PublicationState = "not-needed"
 				fmt.Fprintln(os.Stderr, "Destination store already contains every imported artifact")
@@ -305,16 +301,15 @@ func loadOpenSSLImportSource(root rootfs.Root, password string) ([]openSSLImport
 	if len(certFiles)+len(profileFiles) > maxEncryptedSigningFiles {
 		return nil, nil, fmt.Errorf("source contains more than %d signing files", maxEncryptedSigningFiles)
 	}
-	read := func(relPath string, accept func([]byte) bool) ([]byte, error) {
+	read := func(relPath string, accept func([]byte) bool) error {
 		data, err := root.ReadFileLimited(relPath, maxOpenSSLImportFileSize)
 		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", relPath, err)
+			return fmt.Errorf("read %s: %w", relPath, err)
 		}
-		plaintext, err := signingpkg.DecryptOpenSSLRepositoryFile(data, password, accept)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt %s: %w", relPath, err)
+		if _, err := signingpkg.DecryptOpenSSLRepositoryFile(data, password, accept); err != nil {
+			return fmt.Errorf("decrypt %s: %w", relPath, err)
 		}
-		return plaintext, nil
+		return nil
 	}
 
 	keys := make(map[string][]any)
@@ -322,17 +317,16 @@ func loadOpenSSLImportSource(root rootfs.Root, password string) ([]openSSLImport
 	for _, relPath := range certFiles {
 		switch strings.ToLower(path.Ext(relPath)) {
 		case ".p12":
-			plaintext, err := read(relPath, func(data []byte) bool { _, err := parseOpenSSLImportPrivateKeys(data); return err == nil })
-			if err != nil {
+			var parsed []any
+			if err := read(relPath, func(data []byte) bool { parsed, err = parseOpenSSLImportPrivateKeys(data); return err == nil }); err != nil {
 				return nil, nil, err
 			}
-			keys[strings.TrimSuffix(relPath, path.Ext(relPath))], _ = parseOpenSSLImportPrivateKeys(plaintext)
+			keys[strings.TrimSuffix(relPath, path.Ext(relPath))] = parsed
 		case ".cer":
-			plaintext, err := read(relPath, func(data []byte) bool { _, err := x509.ParseCertificate(data); return err == nil })
-			if err != nil {
+			var cert *x509.Certificate
+			if err := read(relPath, func(data []byte) bool { cert, err = x509.ParseCertificate(data); return err == nil }); err != nil {
 				return nil, nil, err
 			}
-			cert, _ := x509.ParseCertificate(plaintext)
 			sourceType := path.Base(path.Dir(relPath))
 			category := "distribution"
 			if sourceType == "development" {
@@ -375,22 +369,25 @@ func loadOpenSSLImportSource(root rootfs.Root, password string) ([]openSSLImport
 
 	var profiles []openSSLImportProfile
 	for _, relPath := range profileFiles {
-		extension := strings.ToLower(path.Ext(relPath))
 		if !shared.IsProvisioningProfilePath(relPath) {
 			return nil, nil, fmt.Errorf("unsupported source file %s; expected .mobileprovision or .provisionprofile", relPath)
 		}
-		plaintext, err := read(relPath, func(data []byte) bool { _, err := parseIdentityMobileProvision(data); return err == nil })
-		if err != nil {
+		var plaintext []byte
+		var profile *identityMobileProvision
+		if err := read(relPath, func(data []byte) bool {
+			plaintext = data
+			profile, err = parseIdentityMobileProvision(data)
+			return err == nil
+		}); err != nil {
 			return nil, nil, err
 		}
-		profile, _ := parseIdentityMobileProvision(plaintext)
 		identifier, _ := profile.Entitlements["application-identifier"].(string)
 		macIdentifier, _ := profile.Entitlements["com.apple.application-identifier"].(string)
 		if strings.HasSuffix(identifier, "*") || (identifier == "" && strings.HasSuffix(macIdentifier, "*")) {
 			fmt.Fprintf(os.Stderr, "Warning: skipping wildcard profile %s; signing sync stores only explicit bundle ID profiles\n", relPath)
 			continue
 		}
-		imported, err := newOpenSSLImportProfile(relPath, extension, plaintext, profile)
+		imported, err := newOpenSSLImportProfile(relPath, plaintext, profile)
 		if err != nil {
 			return nil, nil, fmt.Errorf("profile %s: %w", relPath, err)
 		}
@@ -414,7 +411,7 @@ func parseOpenSSLImportPrivateKeys(data []byte) ([]any, error) {
 	return keys, nil
 }
 
-func newOpenSSLImportProfile(relPath, extension string, content []byte, profile *identityMobileProvision) (openSSLImportProfile, error) {
+func newOpenSSLImportProfile(relPath string, content []byte, profile *identityMobileProvision) (openSSLImportProfile, error) {
 	uuid, err := normalizeIdentityProfileUUID(profile.UUID)
 	if err != nil {
 		return openSSLImportProfile{}, err
@@ -456,7 +453,6 @@ func newOpenSSLImportProfile(relPath, extension string, content []byte, profile 
 		uuid:        uuid,
 		bundleID:    bundleID,
 		profileType: profileType,
-		extension:   extension,
 	}, nil
 }
 
@@ -515,9 +511,10 @@ func planOpenSSLImportWrites(certificates []openSSLImportCertificate, profiles [
 		profilePath := canonicalSigningPullPath(storedProfile.RelativePath)
 		if !stored {
 			profileDir := path.Join("profiles", profileDirectoryName(profile.profileType))
-			profilePath = path.Join(profileDir, safeFileName(profile.profile.Name, profile.uuid)+profile.extension)
+			name, extension := safeFileName(profile.profile.Name, profile.uuid), strings.ToLower(path.Ext(profile.sourcePath))
+			profilePath = path.Join(profileDir, name+extension)
 			if _, used := plannedProfilePaths[strings.ToLower(profilePath)]; used {
-				profilePath = path.Join(profileDir, safeFileName(profile.profile.Name, profile.uuid)+"--"+profile.uuid+profile.extension)
+				profilePath = path.Join(profileDir, name+"--"+profile.uuid+extension)
 			}
 			plannedProfilePaths[strings.ToLower(profilePath)] = struct{}{}
 			writes = append(writes, openSSLImportWrite{relPath: profilePath, plaintext: profile.content})
