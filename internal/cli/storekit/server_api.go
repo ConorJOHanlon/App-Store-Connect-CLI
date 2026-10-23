@@ -33,7 +33,7 @@ Examples:
   asc storekit transactions view --transaction-id 2000000000000001 --environment sandbox
   asc storekit transactions history --transaction-id 2000000000000001 --environment production --paginate
   asc storekit transactions history --transaction-id 2000000000000001 --product-type AUTO_RENEWABLE --sort DESCENDING --environment production`,
-		transactionsViewCommand(), transactionsHistoryCommand(), setAccountTokenCommand())
+		transactionsViewCommand(), transactionsHistoryCommand(), setAccountTokenCommand(), sendConsumptionCommand(), finishTransactionCommand())
 }
 
 func SubscriptionsCommand() *ffcli.Command {
