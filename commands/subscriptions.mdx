@@ -292,7 +292,8 @@ asc subscriptions create \
   * `THREE_MONTHS`
   * `SIX_MONTHS`
   * `ONE_YEAR`
-* `--family-sharable` - Enable Family Sharing (cannot be undone)
+* `--family-sharable` - Enable Family Sharing (cannot be undone). This also sets
+  `multiSeatStatus` to `DISABLED`.
 
 **Examples:**
 
@@ -330,7 +331,8 @@ asc subscriptions update \
 
 * `--reference-name` - New reference name
 * `--subscription-period` - New duration
-* `--family-sharable` - Enable Family Sharing
+* `--family-sharable` - Enable Family Sharing. This also sets `multiSeatStatus`
+  to `DISABLED`.
 
 ### Delete Subscription
 
@@ -1532,6 +1534,18 @@ retain. Its values are `APP_STORE`, `APPLE_SCHOOL`, and `APPLE_BUSINESS`.
 its own; omitted settings remain unchanged. Both reject empty or unsupported
 values before authentication.
 
-These attributes are supported by the update API. Use `subscriptions update`
-after creation. JSON, table, and Markdown reads show the settings, and sparse
-subscription fields accept `marketSettings` and `multiSeatStatus`.
+Every auto-renewable subscription defaults to `multiSeatStatus` `ENABLED`, so
+set `--multi-seat-status` only to change it. `DISABLED` stops new multi-seat
+purchases and removes the SKU from Apple Business Manager and Apple School
+Manager. Existing multi-seat subscribers keep renewing at their current seat
+count but can't add seats. `--market-settings` only has an effect while the
+status is `ENABLED`.
+
+Turning on Family Sharing (`--family-sharable`) automatically sets
+`multiSeatStatus` to `DISABLED`.
+
+Both attributes apply only to auto-renewable subscriptions and are supported by
+the update API only. Set them with `subscriptions update` after creation. API
+keys with the `MARKETING` role can read them but not update them. JSON, table,
+and Markdown reads show the settings, and sparse subscription fields accept
+`marketSettings` and `multiSeatStatus`.
