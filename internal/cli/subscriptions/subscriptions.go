@@ -1878,7 +1878,7 @@ Confirmation is required when --billing-mode monthly-commitment is selected.`,
 				}
 				territoryIDs, excluded := filterMonthlyCommitmentTerritories(territoryIDs)
 				if len(territoryIDs) == 0 {
-					return shared.UsageError("no eligible monthly-commitment territories remain after excluding USA and Singapore")
+					return shared.UsageError("no eligible monthly-commitment territories remain after excluding USA")
 				}
 				if !*confirm {
 					return shared.UsageError("--confirm is required for monthly-commitment availability changes")

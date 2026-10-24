@@ -840,9 +840,8 @@ the plan availability resource and fails if they do not match the request.
 * `--confirm` - Required, because the write can remove territories
 
 Emptying availability is rejected; removing a subscription from sale runs
-through `asc web subscriptions availability remove-from-sale`. USA and Singapore
-are removed from `MONTHLY` requests with a warning because Apple excludes those
-storefronts.
+through `asc web subscriptions availability remove-from-sale`. USA is removed
+from `MONTHLY` requests with a warning because Apple excludes that storefront.
 
 ### Monthly With 12-Month Commitment
 
@@ -890,8 +889,8 @@ Current CLI behavior:
 * Treats `--price` as the monthly customer price and checks the 12-payment total
   against the upfront annual price: total must be `>= upfront` and `<= 1.5x
   upfront`.
-* Removes USA and Singapore from `--territories` with a warning because Apple
-  excludes those storefronts.
+* Removes USA from `--territories` with a warning because Apple excludes that
+  storefront.
 * Requires an existing UPFRONT subscription price in each eligible territory.
 * Creates or updates `subscriptionPlanAvailabilities` with `planType=MONTHLY`
   before creating MONTHLY `subscriptionPrices`, as required by Apple.
@@ -925,9 +924,9 @@ not combine them with `--next`; the next-page URL already contains the server's
 query state. Use the version-scoped commands below for localization and image
 writes.
 
-Monthly with 12-Month Commitment is available only outside the United States and
-Singapore, requires devices on OS version 26.4 or later, excludes watchOS, and
-requires apps built with SDK 26.5 or later.
+Monthly with 12-Month Commitment is available only outside the United States,
+requires devices on OS version 26.4 or later, excludes watchOS, and requires
+apps built with SDK 26.5 or later.
 
 ## Version-Scoped Localizations
 
