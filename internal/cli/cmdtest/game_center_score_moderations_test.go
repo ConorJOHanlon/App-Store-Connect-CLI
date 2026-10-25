@@ -154,17 +154,31 @@ func TestGameCenterScoreModerationNextAndErrors(t *testing.T) {
 }
 
 func TestGameCenterScoreModerationsUnservedEndpoint(t *testing.T) {
-	setupAuth(t)
-	installDefaultTransport(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		body := `{"errors":[{"status":"404","code":"PATH_ERROR","title":"The URL path is not valid","detail":"The resource 'v2/gameCenterLeaderboards' does not exist"}]}`
-		return &http.Response{StatusCode: 404, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
-	}))
-	root := RootCommand("test")
-	var runErr error
-	_, _ = captureOutput(t, func() {
-		runErr = root.ParseAndRun(context.Background(), []string{"game-center", "leaderboards", "v2", "score-moderations", "list", "--leaderboard-id", "lb-45"})
-	})
-	if runErr == nil || !strings.Contains(runErr.Error(), "Manage Scores and Players") || !strings.Contains(runErr.Error(), "The URL path is not valid") {
-		t.Fatalf("err=%v", runErr)
+	pathError := `{"status":"404","code":"PATH_ERROR","title":"The URL path is not valid","detail":"The resource 'v2/gameCenterLeaderboards' does not exist"}`
+	for _, tc := range []struct {
+		name     string
+		errors   string
+		args     []string
+		wantHint bool
+	}{
+		{"path error", pathError, []string{"--leaderboard-id", "lb-45"}, true},
+		{"path error after another error", `{"status":"404","code":"NOT_FOUND","title":"Not found"},` + pathError, []string{"--leaderboard-id", "lb-45"}, true},
+		{"caller next URL", pathError, []string{"--next", "https://api.appstoreconnect.apple.com/v2/gameCenterLeaderboards/lb-45/gameCenterScoreModerations?cursor=stale"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupAuth(t)
+			installDefaultTransport(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				body := `{"errors":[` + tc.errors + `]}`
+				return &http.Response{StatusCode: 404, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+			}))
+			root := RootCommand("test")
+			var runErr error
+			_, _ = captureOutput(t, func() {
+				runErr = root.ParseAndRun(context.Background(), append([]string{"game-center", "leaderboards", "v2", "score-moderations", "list"}, tc.args...))
+			})
+			if runErr == nil || !strings.Contains(runErr.Error(), "does not exist") || strings.Contains(runErr.Error(), "Manage Scores and Players") != tc.wantHint {
+				t.Fatalf("err=%v", runErr)
+			}
+		})
 	}
 }
