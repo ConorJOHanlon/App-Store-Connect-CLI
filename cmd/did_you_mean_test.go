@@ -420,6 +420,7 @@ func TestUnknownChildSynonymsCoverTheTelemetryGroups(t *testing.T) {
 		"asc screenshots",
 		"asc subscriptions",
 		"asc subscriptions groups",
+		"asc subscriptions review",
 		"asc subscriptions review screenshots",
 		"asc testflight",
 		"asc testflight groups",
