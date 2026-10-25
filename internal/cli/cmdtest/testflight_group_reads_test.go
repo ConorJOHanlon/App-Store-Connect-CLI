@@ -16,6 +16,7 @@ func TestTestFlightGroupReadsSendRequest(t *testing.T) {
 		args      []string
 		wantPath  string
 		wantQuery url.Values
+		body      string
 	}{
 		{
 			name:     "group builds with fields",
@@ -25,6 +26,13 @@ func TestTestFlightGroupReadsSendRequest(t *testing.T) {
 				"fields[builds]": {"version,uploadedDate,processingState"},
 				"limit":          {"5"},
 			},
+		},
+		{
+			name:      "group builds print Apple's sparse envelope unmodified",
+			args:      []string{"testflight", "groups", "builds", "list", "--group-id", "group-1", "--fields", "version", "--limit", "1"},
+			wantPath:  "/v1/betaGroups/group-1/builds",
+			wantQuery: url.Values{"fields[builds]": {"version"}, "limit": {"1"}},
+			body:      `{"data":[{"type":"builds","id":"build-1","attributes":{"version":"11"}}],"links":{"self":"https://api.appstoreconnect.apple.com/v1/betaGroups/group-1/builds"}}`,
 		},
 		{
 			name:     "group testers with fields",
@@ -51,13 +59,17 @@ func TestTestFlightGroupReadsSendRequest(t *testing.T) {
 			setupAuth(t)
 			t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 
+			body := test.body
+			if body == "" {
+				body = `{"data":[],"links":{}}`
+			}
 			var captured *http.Request
 			installDefaultTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				captured = req
-				return okJSONResponse(`{"data":[],"links":{}}`), nil
+				return okJSONResponse(body), nil
 			}))
 
-			_, stderr := captureOutput(t, func() {
+			stdout, stderr := captureOutput(t, func() {
 				if code := cmd.Run(append(test.args, "--output", "json"), "1.2.3"); code != cmd.ExitSuccess {
 					t.Fatalf("expected exit code %d, got %d", cmd.ExitSuccess, code)
 				}
@@ -70,6 +82,9 @@ func TestTestFlightGroupReadsSendRequest(t *testing.T) {
 			}
 			if got := captured.URL.Query().Encode(); got != test.wantQuery.Encode() {
 				t.Fatalf("query = %q, want %q", got, test.wantQuery.Encode())
+			}
+			if got := strings.TrimSpace(stdout); got != body {
+				t.Fatalf("stdout = %q, want Apple's body %q", got, body)
 			}
 		})
 	}

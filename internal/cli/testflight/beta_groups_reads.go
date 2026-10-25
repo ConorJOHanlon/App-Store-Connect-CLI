@@ -2,9 +2,12 @@ package testflight
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -13,30 +16,24 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
-// betaGroupReadPage fetches one page of a beta group's related resources.
-// An empty groupID with a next URL follows that URL verbatim.
-type betaGroupReadPage func(ctx context.Context, client *asc.Client, groupID, next string, limit int, fields []string) (asc.PaginatedResponse, error)
-
 type betaGroupReadConfig struct {
 	resource    string
+	apiResource string
 	fieldsUsage string
 	fieldValues []string
-	fetch       betaGroupReadPage
+	// decode parses the raw envelope for table and markdown output; JSON
+	// output prints Apple's response unmodified.
+	decode func([]byte) (any, error)
 }
 
 // BetaGroupsBuildsCommand returns the beta-groups builds command group.
 func BetaGroupsBuildsCommand() *ffcli.Command {
 	return betaGroupReadGroupCommand(betaGroupReadConfig{
 		resource:    "builds",
+		apiResource: "builds",
 		fieldsUsage: "Fields to include for builds, comma-separated",
 		fieldValues: betaGroupBuildFieldsValues,
-		fetch: func(ctx context.Context, client *asc.Client, groupID, next string, limit int, fields []string) (asc.PaginatedResponse, error) {
-			return client.GetBetaGroupBuilds(ctx, groupID,
-				asc.WithBetaGroupBuildsLimit(limit),
-				asc.WithBetaGroupBuildsNextURL(next),
-				asc.WithBetaGroupBuildsFields(fields),
-			)
-		},
+		decode:      decodeBetaGroupRead[asc.BuildsResponse],
 	})
 }
 
@@ -44,16 +41,19 @@ func BetaGroupsBuildsCommand() *ffcli.Command {
 func BetaGroupsTestersCommand() *ffcli.Command {
 	return betaGroupReadGroupCommand(betaGroupReadConfig{
 		resource:    "testers",
+		apiResource: "betaTesters",
 		fieldsUsage: "Fields to include for testers, comma-separated",
 		fieldValues: betaGroupTesterFieldsValues,
-		fetch: func(ctx context.Context, client *asc.Client, groupID, next string, limit int, fields []string) (asc.PaginatedResponse, error) {
-			return client.GetBetaGroupTesters(ctx, groupID,
-				asc.WithBetaGroupTestersLimit(limit),
-				asc.WithBetaGroupTestersNextURL(next),
-				asc.WithBetaGroupTestersFields(fields),
-			)
-		},
+		decode:      decodeBetaGroupRead[asc.BetaTestersResponse],
 	})
+}
+
+func decodeBetaGroupRead[T any](raw []byte) (any, error) {
+	var response T
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+	return &response, nil
 }
 
 func betaGroupReadGroupCommand(config betaGroupReadConfig) *ffcli.Command {
@@ -138,28 +138,41 @@ Examples:
 				return fmt.Errorf("%s: %w", errPrefix, err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			if *paginate {
-				resp, err := shared.PaginateWithSpinner(
-					requestCtx,
-					func(ctx context.Context) (asc.PaginatedResponse, error) {
-						return config.fetch(ctx, client, groupValue, nextValue, 200, fieldValues)
-					},
-					func(ctx context.Context, nextURL string) (asc.PaginatedResponse, error) {
-						return config.fetch(ctx, client, "", nextURL, 0, nil)
-					},
-				)
-				if err != nil {
-					return fmt.Errorf("%s: %w", errPrefix, err)
+			target := nextValue
+			if target == "" {
+				target = "/v1/betaGroups/" + url.PathEscape(groupValue) + "/" + config.apiResource
+				query := url.Values{}
+				if len(fieldValues) > 0 {
+					query.Set("fields["+config.apiResource+"]", strings.Join(fieldValues, ","))
 				}
-				return shared.PrintOutput(resp, *output.Output, *output.Pretty)
+				if *paginate {
+					query.Set("limit", "200")
+				} else if *limit > 0 {
+					query.Set("limit", strconv.Itoa(*limit))
+				}
+				if encoded := query.Encode(); encoded != "" {
+					target += "?" + encoded
+				}
 			}
 
-			resp, err := config.fetch(requestCtx, client, groupValue, nextValue, *limit, fieldValues)
+			var raw []byte
+			if *paginate {
+				raw, err = client.RawPaginatedGET(ctx, target, shared.ContextWithTimeout)
+			} else {
+				requestCtx, cancel := shared.ContextWithTimeout(ctx)
+				raw, err = client.RawRequest(requestCtx, "GET", target, nil)
+				cancel()
+			}
 			if err != nil {
 				return fmt.Errorf("%s: failed to fetch: %w", errPrefix, err)
+			}
+
+			if shared.NormalizeOutputFormat(*output.Output) == "json" {
+				return shared.PrintOutput(json.RawMessage(raw), *output.Output, *output.Pretty)
+			}
+			resp, err := config.decode(raw)
+			if err != nil {
+				return fmt.Errorf("%s: %w", errPrefix, err)
 			}
 			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
 		},

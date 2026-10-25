@@ -82,12 +82,10 @@ type betaGroupsQuery struct {
 
 type betaGroupBuildsQuery struct {
 	listQuery
-	fields []string
 }
 
 type betaGroupTestersQuery struct {
 	listQuery
-	fields []string
 }
 
 type betaTestersQuery struct {
@@ -238,14 +236,12 @@ func buildBetaGroupsQuery(query *betaGroupsQuery) string {
 
 func buildBetaGroupBuildsQuery(query *betaGroupBuildsQuery) string {
 	values := url.Values{}
-	addCSV(values, "fields[builds]", query.fields)
 	addLimit(values, query.limit)
 	return values.Encode()
 }
 
 func buildBetaGroupTestersQuery(query *betaGroupTestersQuery) string {
 	values := url.Values{}
-	addCSV(values, "fields[betaTesters]", query.fields)
 	addLimit(values, query.limit)
 	return values.Encode()
 }
@@ -759,13 +755,6 @@ func WithBetaGroupBuildsNextURL(next string) BetaGroupBuildsOption {
 	}
 }
 
-// WithBetaGroupBuildsFields sets fields[builds] for a beta group's builds.
-func WithBetaGroupBuildsFields(fields []string) BetaGroupBuildsOption {
-	return func(q *betaGroupBuildsQuery) {
-		q.fields = normalizeList(fields)
-	}
-}
-
 // WithBetaGroupTestersLimit sets the max number of testers to return for a group.
 func WithBetaGroupTestersLimit(limit int) BetaGroupTestersOption {
 	return func(q *betaGroupTestersQuery) {
@@ -781,13 +770,6 @@ func WithBetaGroupTestersNextURL(next string) BetaGroupTestersOption {
 		if strings.TrimSpace(next) != "" {
 			q.nextURL = strings.TrimSpace(next)
 		}
-	}
-}
-
-// WithBetaGroupTestersFields sets fields[betaTesters] for a beta group's testers.
-func WithBetaGroupTestersFields(fields []string) BetaGroupTestersOption {
-	return func(q *betaGroupTestersQuery) {
-		q.fields = normalizeList(fields)
 	}
 }
 
