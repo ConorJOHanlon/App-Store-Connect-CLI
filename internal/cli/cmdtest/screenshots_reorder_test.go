@@ -15,11 +15,14 @@ func TestScreenshotsReorder(t *testing.T) {
 		name       string
 		args       []string
 		wantPatch  []string
+		patchBody  string
 		wantUsage  string
 		wantErr    string
 		wantNoCall bool
 	}{
 		{name: "full set in new order", args: []string{"--set-id", "set-1", "--ids", "c,a,b"}, wantPatch: []string{"c", "a", "b"}},
+		{name: "set changed before PATCH", args: []string{"--set-id", "set-1", "--ids", "c,a,b"}, wantPatch: []string{"c", "a", "b"}, patchBody: `{"errors":[{"status":"409","code":"STATE_ERROR","title":"The request cannot be fulfilled because of the state of another resource.","detail":"Can't Add/Remove Relationship when reorder Set: appScreenshotSets"}]}`, wantErr: "screenshot set set-1 changed after it was read, so App Store Connect rejected the new order and left the set as it was; list it with: asc screenshots list --set-id set-1, then re-run with its current screenshot IDs"},
+		{name: "other conflict", args: []string{"--set-id", "set-1", "--ids", "c,a,b"}, wantPatch: []string{"c", "a", "b"}, patchBody: `{"errors":[{"status":"409","code":"STATE_ERROR","title":"The request cannot be fulfilled because of the state of another resource.","detail":"The version is not editable in its current state."}]}`, wantErr: "screenshots reorder: The request cannot be fulfilled because of the state of another resource.: The version is not editable in its current state."},
 		{name: "missing set member", args: []string{"--set-id", "set-1", "--ids", "c,a"}, wantErr: `missing from --ids: b`},
 		{name: "unknown id", args: []string{"--set-id", "set-1", "--ids", "c,a,b,x"}, wantErr: `not in set set-1: x`},
 		{name: "duplicate id", args: []string{"--set-id", "set-1", "--ids", "a,a,b,c"}, wantUsage: `Error: screenshots reorder: --ids contains duplicate ID "a"`, wantNoCall: true},
@@ -58,6 +61,12 @@ func TestScreenshotsReorder(t *testing.T) {
 						}
 						patched = append(patched, item.ID)
 					}
+					if tt.patchBody != "" {
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusConflict)
+						_, _ = io.WriteString(w, tt.patchBody)
+						return
+					}
 					w.WriteHeader(http.StatusNoContent)
 				default:
 					t.Errorf("unexpected method %s", req.Method)
@@ -77,8 +86,8 @@ func TestScreenshotsReorder(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || stdout != "" {
 					t.Fatalf("expected error containing %q, got err=%v stdout=%q", tt.wantErr, err, stdout)
 				}
-				if patched != nil {
-					t.Fatalf("PATCH sent despite validation failure: %v", patched)
+				if !reflect.DeepEqual(patched, tt.wantPatch) {
+					t.Fatalf("PATCH order = %v, want %v", patched, tt.wantPatch)
 				}
 			default:
 				if err != nil {
