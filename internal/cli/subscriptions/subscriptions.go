@@ -1007,7 +1007,7 @@ func SubscriptionsPricesListCommand() *ffcli.Command {
 	subID := shared.BindResourceIDFlag(fs, "subscription-id", "subscriptions", "Subscription ID, product ID, or exact current name")
 	appID := addSubscriptionLookupAppFlag(fs)
 	planType := fs.String("plan-type", "", "Filter by plan type: MONTHLY or UPFRONT")
-	territory := fs.String("territory", "", "Filter by territory (accepts alpha-2, alpha-3, or exact English country name; e.g., US, USA, United States)")
+	territory := fs.String("territory", "", "Filter by territories (comma-separated; accepts alpha-2, alpha-3, or exact English country name; e.g., US, USA, United States)")
 	pricePointIDs := fs.String("price-point-id", "", "Filter by subscription price point IDs (comma-separated)")
 	fields := fs.String("fields", "", "Subscription price fields (comma-separated)")
 	territoryFields := fs.String("territory-fields", "", "Included territory fields (comma-separated): currency")
@@ -1026,7 +1026,8 @@ func SubscriptionsPricesListCommand() *ffcli.Command {
 		LongHelp: `List prices for a subscription.
 
 Use --plan-type to filter by MONTHLY or UPFRONT billing plan prices.
-Use --territory to filter by a single territory.
+Use --territory to filter by one or more comma-separated territories. With
+--resolved, the current price is returned for each listed territory.
 Use --price-point-id to filter by subscription price point IDs. Use --fields,
 --price-point-fields, and --territory-fields to request sparse response fields;
 the corresponding relationship is included automatically when needed.
@@ -1035,7 +1036,7 @@ Examples:
   asc subscriptions prices list --subscription-id "SUB_ID"
   asc subscriptions prices list --subscription-id "SUB_ID" --paginate
   asc subscriptions prices list --subscription-id "SUB_ID" --resolved
-  asc subscriptions prices list --subscription-id "SUB_ID" --resolved --territory USA
+  asc subscriptions prices list --subscription-id "SUB_ID" --resolved --territory USA,GBR
   asc subscriptions prices list --subscription-id "SUB_ID" --plan-type MONTHLY
   asc subscriptions prices list --subscription-id "SUB_ID" --price-point-id "PRICE_POINT_ID" --include subscriptionPricePoint --price-point-fields customerPrice`,
 		FlagSet:   fs,
@@ -1086,23 +1087,11 @@ Examples:
 				planTypeFilter = normalized
 			}
 
-			territoryFilter := strings.TrimSpace(*territory)
-			territoryProvided := false
-			fs.Visit(func(f *flag.Flag) {
-				if f.Name == "territory" {
-					territoryProvided = true
-				}
-			})
-			if territoryProvided {
-				if territoryFilter == "" {
-					return shared.UsageError("invalid value for --territory: cannot be empty")
-				}
-				normalizedTerritory, normalizeErr := ascterritory.Normalize(territoryFilter)
-				if normalizeErr != nil {
-					return shared.UsageError(normalizeErr.Error())
-				}
-				territoryFilter = normalizedTerritory
+			selectedTerritories, err := normalizeOptionalTerritoryFilter(fs, "territory", *territory)
+			if err != nil {
+				return shared.UsageError(err.Error())
 			}
+			territoryFilter := strings.Join(selectedTerritories, ",")
 
 			selectedPricePointIDs, err := normalizeOptionalCSVFilter(fs, "price-point-id", *pricePointIDs, false)
 			if err != nil {
