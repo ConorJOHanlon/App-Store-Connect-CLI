@@ -39,54 +39,55 @@ func (f *validateDeepWebFixture) GetAgreementsStatus(context.Context) (*asc.WebA
 }
 
 type validateFixture struct {
-	app                        string
-	appStatus                  int
-	versions                   string
-	versionsByQuery            map[string]string
-	versionsStatusByQuery      map[string]int
-	version                    string
-	appInfos                   string
-	appInfoLocs                string
-	versionLocs                string
-	ageRating                  string
-	reviewDetails              string
-	primaryCategory            string
-	build                      string
-	priceSchedule              string
-	waitForPriceScheduleCtx    bool
-	baseTerritory              string
-	manualPrices               string
-	manualPricesStatus         int
-	manualPricesBody           string
-	availabilityV2             string
-	availabilityV2Status       int
-	territories                string
-	territoriesByQuery         map[string]string
-	pricingTerritories         string
-	pricingTerritoriesByQuery  map[string]string
-	screenshotSets             map[string]string
-	screenshotsBySet           map[string]string
-	subscriptionGroups         string
-	subscriptionsByGroup       map[string]string
-	groupLocalizationsByGroup  map[string]string
-	groupLocalizationStatus    map[string]int
-	imagesBySubscription       map[string]string
-	imageStatusBySubscription  map[string]int
-	imageErrorBySubscription   map[string]error
-	localizationsBySub         map[string]string
-	localizationsStatusBySub   map[string]int
-	pricesBySubscription       map[string]string
-	expectedPriceInclude       string
-	pricesStatusBySubscription map[string]int
-	priceErrorBySubscription   map[string]error
-	subscriptionGroupsStatus   int
-	iaps                       string
-	iapsStatus                 int
-	customProductPages         string
-	customPageVersionsByPage   map[string]string
-	customPageLocsByVersion    map[string]string
-	customPageKeywordsByLoc    map[string]string
-	requestObserver            func(*http.Request)
+	app                           string
+	appStatus                     int
+	versions                      string
+	versionsByQuery               map[string]string
+	versionsStatusByQuery         map[string]int
+	version                       string
+	appInfos                      string
+	appInfoLocs                   string
+	versionLocs                   string
+	ageRating                     string
+	reviewDetails                 string
+	primaryCategory               string
+	build                         string
+	priceSchedule                 string
+	waitForPriceScheduleCtx       bool
+	baseTerritory                 string
+	manualPrices                  string
+	manualPricesStatus            int
+	manualPricesBody              string
+	availabilityV2                string
+	availabilityV2Status          int
+	territories                   string
+	territoriesByQuery            map[string]string
+	pricingTerritories            string
+	pricingTerritoriesByQuery     map[string]string
+	screenshotSets                map[string]string
+	screenshotsBySet              map[string]string
+	subscriptionGroups            string
+	subscriptionsByGroup          map[string]string
+	groupLocalizationsByGroup     map[string]string
+	groupLocalizationStatus       map[string]int
+	imagesBySubscription          map[string]string
+	imageStatusBySubscription     map[string]int
+	imageErrorBySubscription      map[string]error
+	localizationsBySub            map[string]string
+	localizationsStatusBySub      map[string]int
+	pricesBySubscription          map[string]string
+	expectedPriceInclude          string
+	pricesStatusBySubscription    map[string]int
+	priceErrorBySubscription      map[string]error
+	subscriptionGroupsStatus      int
+	iaps                          string
+	iapsStatus                    int
+	customProductPages            string
+	customPageVersionsByPage      map[string]string
+	customPageLocsByVersion       map[string]string
+	customPageKeywordsByLoc       map[string]string
+	customPageKeywordsStatusByLoc map[string]int
+	requestObserver               func(*http.Request)
 }
 
 func newValidateTestClient(t *testing.T, fixture validateFixture) *asc.Client {
@@ -296,6 +297,9 @@ func newValidateTestClient(t *testing.T, fixture validateFixture) *asc.Client {
 			}
 		case strings.HasPrefix(path, "/v1/appCustomProductPageLocalizations/") && strings.HasSuffix(path, "/searchKeywords"):
 			localizationID := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/appCustomProductPageLocalizations/"), "/searchKeywords")
+			if status, ok := fixture.customPageKeywordsStatusByLoc[localizationID]; ok {
+				return jsonResponse(status, apiErrorJSONForStatus(status))
+			}
 			if body, ok := fixture.customPageKeywordsByLoc[localizationID]; ok {
 				return jsonResponse(http.StatusOK, body)
 			}
@@ -589,19 +593,35 @@ func TestValidateWarnsCopyrightWithoutLeadingAcquisitionYear(t *testing.T) {
 }
 
 func TestValidateWarnsWhenCustomProductPageKeywordsAreMissingFromVersionKeywords(t *testing.T) {
+	const localizationWithoutKeywords = `{"type":"appCustomProductPageLocalizations","id":"cpl-1","attributes":{"locale":"en-US"}}`
 	tests := []struct {
-		name         string
-		pageKeywords string
-		wantMissing  []string
+		name           string
+		localization   string
+		pageKeywords   string
+		keywordsStatus int
+		wantMissing    []string
+		wantUnverified bool
 	}{
 		{
-			name:         "page keyword missing from version keywords",
-			pageKeywords: `{"data":[{"type":"appKeywords","id":"music"},{"type":"appKeywords","id":"theory"}]}`,
+			name:         "included page keyword missing from version keywords",
+			localization: `{"type":"appCustomProductPageLocalizations","id":"cpl-1","attributes":{"locale":"en-US"},"relationships":{"searchKeywords":{"meta":{"paging":{"total":2,"limit":50}},"data":[{"type":"appKeywords","id":"music"},{"type":"appKeywords","id":"theory"}]}}}`,
 			wantMissing:  []string{"theory"},
 		},
 		{
-			name:         "page keywords covered by version keywords",
+			name:         "fetched page keywords covered by version keywords",
+			localization: localizationWithoutKeywords,
 			pageKeywords: `{"data":[{"type":"appKeywords","id":"music"},{"type":"appKeywords","id":"ear training"},{"type":"appKeywords","id":"Tone"}]}`,
+		},
+		{
+			name:           "nested not found reports unverified",
+			localization:   localizationWithoutKeywords,
+			wantUnverified: true,
+		},
+		{
+			name:           "nested bad request reports unverified",
+			localization:   localizationWithoutKeywords,
+			keywordsStatus: http.StatusBadRequest,
+			wantUnverified: true,
 		},
 	}
 
@@ -615,19 +635,27 @@ func TestValidateWarnsWhenCustomProductPageKeywordsAreMissingFromVersionKeywords
 			}
 			fixture.customPageLocsByVersion = map[string]string{
 				"cpv-old": `{"data":[{"type":"appCustomProductPageLocalizations","id":"cpl-old","attributes":{"locale":"en-US"}}]}`,
-				"cpv-1":   `{"data":[{"type":"appCustomProductPageLocalizations","id":"cpl-1","attributes":{"locale":"en-US"}}]}`,
+				"cpv-1":   `{"data":[` + test.localization + `]}`,
 			}
 			fixture.customPageKeywordsByLoc = map[string]string{
 				"cpl-old": `{"data":[{"type":"appKeywords","id":"retired"}]}`,
-				"cpl-1":   test.pageKeywords,
+			}
+			if test.pageKeywords != "" {
+				fixture.customPageKeywordsByLoc["cpl-1"] = test.pageKeywords
+			}
+			if test.keywordsStatus != 0 {
+				fixture.customPageKeywordsStatusByLoc = map[string]int{"cpl-1": test.keywordsStatus}
 			}
 
 			report, err := runValidateReport(t, fixture)
 			if err != nil {
-				t.Fatalf("expected missing page keywords to be advisory, got %v", err)
+				t.Fatalf("expected custom product page keyword checks to be advisory, got %v", err)
 			}
 			if report.Summary.Blocking != 0 {
 				t.Fatalf("expected no blocking issues, got %+v", report.Summary)
+			}
+			if got := hasCheckWithID(report.Checks, "custom_product_pages.keywords.unverified"); got != test.wantUnverified {
+				t.Fatalf("unverified check present = %t, want %t; checks=%+v", got, test.wantUnverified, report.Checks)
 			}
 
 			var checks []validation.CheckResult

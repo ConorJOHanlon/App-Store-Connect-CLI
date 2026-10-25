@@ -56,7 +56,7 @@ func customProductPageKeywordChecks(versionLocalizations []VersionLocalization, 
 				ResourceType: "appCustomProductPageLocalization",
 				ResourceID:   strings.TrimSpace(page.LocalizationID),
 				Message:      fmt.Sprintf("custom product page %q search keyword %q is not in this version's %s keywords", page.PageName, keyword, locale),
-				Remediation:  fmt.Sprintf("Add %q to this version's %s keywords, or expect Apple to remove it from custom product page %q when this version goes live", keyword, locale, page.PageName),
+				Remediation:  fmt.Sprintf("Add %q to this version's %s keywords, or remove it from custom product page %q", keyword, locale, page.PageName),
 			})
 		}
 	}

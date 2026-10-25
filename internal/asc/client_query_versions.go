@@ -98,6 +98,7 @@ type appCustomProductPageVersionsQuery struct {
 
 type appCustomProductPageLocalizationsQuery struct {
 	listQuery
+	searchKeywordsLimit int
 }
 
 type appCustomProductPageLocalizationPreviewSetsQuery struct {
@@ -329,6 +330,10 @@ func buildAppCustomProductPageVersionsQuery(query *appCustomProductPageVersionsQ
 func buildAppCustomProductPageLocalizationsQuery(query *appCustomProductPageLocalizationsQuery) string {
 	values := url.Values{}
 	addLimit(values, query.limit)
+	if query.searchKeywordsLimit > 0 {
+		values.Set("include", "searchKeywords")
+		values.Set("limit[searchKeywords]", strconv.Itoa(query.searchKeywordsLimit))
+	}
 	return values.Encode()
 }
 
@@ -1105,6 +1110,16 @@ func WithAppCustomProductPageLocalizationsLimit(limit int) AppCustomProductPageL
 	return func(q *appCustomProductPageLocalizationsQuery) {
 		if limit > 0 {
 			q.limit = limit
+		}
+	}
+}
+
+// WithAppCustomProductPageLocalizationsSearchKeywords includes up to limit
+// search keywords per localization in each localization's relationships.
+func WithAppCustomProductPageLocalizationsSearchKeywords(limit int) AppCustomProductPageLocalizationsOption {
+	return func(q *appCustomProductPageLocalizationsQuery) {
+		if limit > 0 {
+			q.searchKeywordsLimit = limit
 		}
 	}
 }
