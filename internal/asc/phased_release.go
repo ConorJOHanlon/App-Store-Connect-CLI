@@ -31,8 +31,9 @@ type AppStoreVersionPhasedReleaseAttributes struct {
 
 // AppStoreVersionPhasedReleaseResponse represents an API response for a phased release.
 type AppStoreVersionPhasedReleaseResponse struct {
-	Data  Resource[AppStoreVersionPhasedReleaseAttributes] `json:"data"`
-	Links Links                                            `json:"links"`
+	// Data is nil when the version has no phased release ({"data":null}).
+	Data  *Resource[AppStoreVersionPhasedReleaseAttributes] `json:"data"`
+	Links Links                                             `json:"links"`
 }
 
 // AppStoreVersionPhasedReleaseCreateRequest represents a request to create a phased release.

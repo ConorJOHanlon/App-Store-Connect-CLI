@@ -365,8 +365,14 @@ Examples:
   asc versions view --version-id "VERSION_ID"
   asc versions view --app "123456789" --version "1.2.3"
   asc versions view --app "123456789" --version "1.2.3" --platform MAC_OS
+  asc versions view --version-id "VERSION_ID" --include build
   asc versions view --version-id "VERSION_ID" --include-build --include-submission
-  asc versions view --version-id "VERSION_ID" --include "ageRatingDeclaration,appStoreReviewDetail"`,
+  asc versions view --version-id "VERSION_ID" --include "ageRatingDeclaration,appStoreReviewDetail"
+
+Without --include, view prints a reduced summary (id, versionString, platform,
+state, downloadable, and the --include-build/--include-submission IDs). That
+summary is deprecated: the next major release prints Apple's appStoreVersions
+envelope instead. Any --include prints the envelope now.`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -469,6 +475,7 @@ Examples:
 				return fmt.Errorf("versions view: %w", err)
 			}
 
+			fmt.Fprintln(os.Stderr, "Warning: `asc versions view` without --include prints a reduced summary; the next major release prints Apple's appStoreVersions envelope instead. Pass --include to get the envelope now: --include build replaces --include-build, --include appStoreVersionSubmission replaces --include-submission.")
 			result := &asc.AppStoreVersionDetailResult{
 				ID:            versionResp.Data.ID,
 				VersionString: versionResp.Data.Attributes.VersionString,

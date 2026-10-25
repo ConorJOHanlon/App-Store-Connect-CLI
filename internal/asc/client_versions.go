@@ -20,6 +20,35 @@ type AppStoreVersionAttributes struct {
 	// Downloadable is nullable in the App Store Connect API. A pointer keeps
 	// false distinct from an omitted or null attribute in sparse responses.
 	Downloadable *bool `json:"downloadable,omitempty"`
+
+	raw rawAttributes
+}
+
+// UnmarshalJSON keeps every appStoreVersions attribute Apple returned,
+// including nulls and attributes the struct does not model.
+func (a *AppStoreVersionAttributes) UnmarshalJSON(data []byte) error {
+	type alias AppStoreVersionAttributes
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	raw, err := captureRawAttributes(data, decoded)
+	if err != nil {
+		return err
+	}
+	*a = AppStoreVersionAttributes(decoded)
+	a.raw = raw
+	return nil
+}
+
+// MarshalJSON prints the attributes Apple returned, with caller edits applied.
+func (a AppStoreVersionAttributes) MarshalJSON() ([]byte, error) {
+	type alias AppStoreVersionAttributes
+	encoded, err := json.Marshal(alias(a))
+	if err != nil {
+		return nil, err
+	}
+	return a.raw.merge(encoded)
 }
 
 // AppStoreVersionCreateAttributes describes app store version create payload attributes.
