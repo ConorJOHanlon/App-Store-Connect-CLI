@@ -3,6 +3,7 @@ package asc
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strings"
 )
 
@@ -21,27 +22,64 @@ func unmarshalAPIAttributes[T any](data []byte) (T, apiAttributes, error) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return decoded, apiAttributes{}, err
 	}
-	var original map[string]json.RawMessage
-	if err := json.Unmarshal(data, &original); err != nil || original == nil {
-		return decoded, apiAttributes{}, err
-	}
 	baseline, err := json.Marshal(decoded)
 	if err != nil {
 		return decoded, apiAttributes{}, err
 	}
-	var values map[string]json.RawMessage
-	if err := json.Unmarshal(baseline, &values); err != nil {
-		return decoded, apiAttributes{}, err
+	api, err := captureAPIAttributes(data, baseline, reflect.TypeOf(decoded))
+	return decoded, api, err
+}
+
+// captureAPIAttributes snapshots Apple's object next to baseline, the
+// encoding of what the modeled struct decoded from it. Keys that encoding/json
+// matched to a modeled field under different casing are dropped, so a value
+// such as a redacted secret cannot reappear under another spelling.
+func captureAPIAttributes(data, baseline []byte, modeled reflect.Type, extraNames ...string) (apiAttributes, error) {
+	var original map[string]json.RawMessage
+	if err := json.Unmarshal(data, &original); err != nil || original == nil {
+		return apiAttributes{}, err
 	}
-	return decoded, apiAttributes{original: original, decoded: values}, nil
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(baseline, &decoded); err != nil {
+		return apiAttributes{}, err
+	}
+	names := extraNames
+	for i := range modeled.NumField() {
+		field := modeled.Field(i)
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if !field.IsExported() || name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		names = append(names, name)
+	}
+	for key := range original {
+		for _, name := range names {
+			if key != name && strings.EqualFold(key, name) {
+				delete(original, key)
+			}
+		}
+	}
+	return apiAttributes{original: original, decoded: decoded}, nil
 }
 
 // marshal encodes value, a method-free alias of an attributes type, over
-// Apple's original object, applying only the fields changed in code.
+// Apple's original object.
 func (a apiAttributes) marshal(value any) ([]byte, error) {
 	encoded, err := json.Marshal(value)
-	if err != nil || a.decoded == nil {
-		return encoded, err
+	if err != nil {
+		return nil, err
+	}
+	return a.apply(encoded)
+}
+
+// apply lays encoded, the modeled struct's current encoding, over Apple's
+// original object, keeping only the fields changed in code.
+func (a apiAttributes) apply(encoded []byte) ([]byte, error) {
+	if a.decoded == nil {
+		return encoded, nil
 	}
 	var current map[string]json.RawMessage
 	if err := json.Unmarshal(encoded, &current); err != nil {
@@ -53,27 +91,15 @@ func (a apiAttributes) marshal(value any) ([]byte, error) {
 	}
 	for name, value := range current {
 		if !bytes.Equal(value, a.decoded[name]) {
-			deleteFoldedAttribute(result, name)
 			result[name] = value
 		}
 	}
 	for name := range a.decoded {
 		if _, present := current[name]; !present {
-			deleteFoldedAttribute(result, name)
+			delete(result, name)
 		}
 	}
 	return json.Marshal(result)
-}
-
-// deleteFoldedAttribute removes every key encoding/json matches to name, so a
-// changed value such as a redacted secret cannot survive under a differently
-// cased duplicate key.
-func deleteFoldedAttribute(attributes map[string]json.RawMessage, name string) {
-	for key := range attributes {
-		if strings.EqualFold(key, name) {
-			delete(attributes, key)
-		}
-	}
 }
 
 func (a *AppStoreReviewDetailAttributes) UnmarshalJSON(data []byte) error {
@@ -169,5 +195,133 @@ func (a *InAppPurchaseAppStoreReviewScreenshotAttributes) UnmarshalJSON(data []b
 
 func (a InAppPurchaseAppStoreReviewScreenshotAttributes) MarshalJSON() ([]byte, error) {
 	type alias InAppPurchaseAppStoreReviewScreenshotAttributes
+	return a.api.marshal(alias(a))
+}
+
+func (a *ReviewSubmissionAttributes) UnmarshalJSON(data []byte) error {
+	type alias ReviewSubmissionAttributes
+	decoded, api, err := unmarshalAPIAttributes[alias](data)
+	if err != nil {
+		return err
+	}
+	*a = ReviewSubmissionAttributes(decoded)
+	a.api = api
+	return nil
+}
+
+func (a ReviewSubmissionAttributes) MarshalJSON() ([]byte, error) {
+	type alias ReviewSubmissionAttributes
+	return a.api.marshal(alias(a))
+}
+
+func (a *ReviewSubmissionItemAttributes) UnmarshalJSON(data []byte) error {
+	type alias ReviewSubmissionItemAttributes
+	decoded, api, err := unmarshalAPIAttributes[alias](data)
+	if err != nil {
+		return err
+	}
+	*a = ReviewSubmissionItemAttributes(decoded)
+	a.api = api
+	return nil
+}
+
+func (a ReviewSubmissionItemAttributes) MarshalJSON() ([]byte, error) {
+	type alias ReviewSubmissionItemAttributes
+	return a.api.marshal(alias(a))
+}
+
+func (a *BuildBetaDetailAttributes) UnmarshalJSON(data []byte) error {
+	type alias BuildBetaDetailAttributes
+	decoded, api, err := unmarshalAPIAttributes[alias](data)
+	if err != nil {
+		return err
+	}
+	*a = BuildBetaDetailAttributes(decoded)
+	a.api = api
+	return nil
+}
+
+func (a BuildBetaDetailAttributes) MarshalJSON() ([]byte, error) {
+	type alias BuildBetaDetailAttributes
+	return a.api.marshal(alias(a))
+}
+
+func (a *SubscriptionAttributes) UnmarshalJSON(data []byte) error {
+	type alias SubscriptionAttributes
+	decoded, api, err := unmarshalAPIAttributes[alias](data)
+	if err != nil {
+		return err
+	}
+	*a = SubscriptionAttributes(decoded)
+	a.api = api
+	return nil
+}
+
+func (a SubscriptionAttributes) MarshalJSON() ([]byte, error) {
+	type alias SubscriptionAttributes
+	return a.api.marshal(alias(a))
+}
+
+func (a *InAppPurchaseV2Attributes) UnmarshalJSON(data []byte) error {
+	type alias InAppPurchaseV2Attributes
+	decoded, api, err := unmarshalAPIAttributes[alias](data)
+	if err != nil {
+		return err
+	}
+	*a = InAppPurchaseV2Attributes(decoded)
+	a.api = api
+	return nil
+}
+
+func (a InAppPurchaseV2Attributes) MarshalJSON() ([]byte, error) {
+	type alias InAppPurchaseV2Attributes
+	return a.api.marshal(alias(a))
+}
+
+func (a *BetaAppReviewDetailAttributes) UnmarshalJSON(data []byte) error {
+	type alias BetaAppReviewDetailAttributes
+	decoded, api, err := unmarshalAPIAttributes[alias](data)
+	if err != nil {
+		return err
+	}
+	*a = BetaAppReviewDetailAttributes(decoded)
+	a.api = api
+	return nil
+}
+
+func (a BetaAppReviewDetailAttributes) MarshalJSON() ([]byte, error) {
+	type alias BetaAppReviewDetailAttributes
+	return a.api.marshal(alias(a))
+}
+
+func (a *BetaAppLocalizationAttributes) UnmarshalJSON(data []byte) error {
+	type alias BetaAppLocalizationAttributes
+	decoded, api, err := unmarshalAPIAttributes[alias](data)
+	if err != nil {
+		return err
+	}
+	*a = BetaAppLocalizationAttributes(decoded)
+	a.api = api
+	return nil
+}
+
+func (a BetaAppLocalizationAttributes) MarshalJSON() ([]byte, error) {
+	type alias BetaAppLocalizationAttributes
+	return a.api.marshal(alias(a))
+}
+
+func (a *AppStoreVersionPhasedReleaseAttributes) UnmarshalJSON(data []byte) error {
+	type alias AppStoreVersionPhasedReleaseAttributes
+	decoded, api, err := unmarshalAPIAttributes[alias](data)
+	if err != nil {
+		return err
+	}
+	*a = AppStoreVersionPhasedReleaseAttributes(decoded)
+	a.api = api
+	return nil
+}
+
+func (a AppStoreVersionPhasedReleaseAttributes) MarshalJSON() ([]byte, error) {
+	type alias AppStoreVersionPhasedReleaseAttributes
 	return a.api.marshal(alias(a))
 }

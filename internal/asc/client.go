@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 )
 
@@ -155,6 +156,8 @@ type BetaAppLocalizationAttributes struct {
 	TvOsPrivacyPolicy string `json:"tvOsPrivacyPolicy,omitempty"`
 	Description       string `json:"description,omitempty"`
 	Locale            string `json:"locale,omitempty"`
+
+	api apiAttributes
 }
 
 // BetaBuildLocalizationAttributes describes TestFlight build localization notes.
@@ -398,6 +401,8 @@ type BetaTesterAttributes struct {
 	InviteType BetaInviteType        `json:"inviteType,omitempty"`
 	State      BetaTesterState       `json:"state,omitempty"`
 	AppDevices []BetaTesterAppDevice `json:"-"`
+
+	api apiAttributes
 }
 
 // UnmarshalJSON keeps absent appDevices nil while retaining explicit arrays.
@@ -414,11 +419,24 @@ func (a *BetaTesterAttributes) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	a.AppDevices = aux.AppDevices
-	return nil
+	baseline, err := a.modeledJSON()
+	if err != nil {
+		return err
+	}
+	a.api, err = captureAPIAttributes(data, baseline, reflect.TypeFor[BetaTesterAttributes](), "appDevices")
+	return err
 }
 
 // MarshalJSON preserves absent and explicit empty appDevices values.
 func (a BetaTesterAttributes) MarshalJSON() ([]byte, error) {
+	encoded, err := a.modeledJSON()
+	if err != nil {
+		return nil, err
+	}
+	return a.api.apply(encoded)
+}
+
+func (a BetaTesterAttributes) modeledJSON() ([]byte, error) {
 	type betaTesterAttributesAlias BetaTesterAttributes
 	var appDevices *[]BetaTesterAppDevice
 	if a.AppDevices != nil {
