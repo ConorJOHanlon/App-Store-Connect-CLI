@@ -2,8 +2,10 @@ package assets
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -29,7 +31,9 @@ func AssetsScreenshotsReorderCommand() *ffcli.Command {
 --ids must list every screenshot currently in the set exactly once, in the
 desired order. The command reads the set first and refuses to send the update
 when an ID is missing from --ids or does not belong to the set. It does not
-add, remove, or delete screenshots.
+add, remove, or delete screenshots. If a screenshot is added to the set after
+that read, App Store Connect rejects the update and the set keeps its order;
+list the set again and re-run with its current IDs.
 
 Examples:
   asc screenshots list --set-id "SET_ID"
@@ -69,6 +73,9 @@ Examples:
 			writeCtx, cancelWrite := shared.ContextWithTimeout(ctx)
 			defer cancelWrite()
 			if err := SetOrderedAppScreenshots(writeCtx, client, trimmedSetID, orderedIDs); err != nil {
+				if isScreenshotSetMembershipConflict(err) {
+					return fmt.Errorf("screenshots reorder: screenshot set %s changed after it was read, so App Store Connect rejected the new order and left the set as it was; list it with: asc screenshots list --set-id %s, then re-run with its current screenshot IDs: %w", trimmedSetID, trimmedSetID, err)
+				}
 				return fmt.Errorf("screenshots reorder: %w", err)
 			}
 
@@ -128,4 +135,19 @@ func screenshotReorderMembershipError(setID string, currentIDs, orderedIDs []str
 		return nil
 	}
 	return fmt.Errorf("--ids must list every screenshot in the set exactly once; %s (inspect with: asc screenshots list --set-id %s)", strings.Join(problems, "; "), setID)
+}
+
+// isScreenshotSetMembershipConflict reports Apple's 409 for a full-replace
+// relationship update whose IDs no longer match the set's screenshots.
+func isScreenshotSetMembershipConflict(err error) bool {
+	var apiErr *asc.APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusConflict {
+		return false
+	}
+	for _, detail := range apiErr.AllDetails {
+		if strings.Contains(detail, "Add/Remove Relationship") {
+			return true
+		}
+	}
+	return false
 }
