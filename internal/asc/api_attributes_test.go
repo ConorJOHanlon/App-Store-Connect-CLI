@@ -58,6 +58,30 @@ func TestAPIAttributesRoundTripAppleObject(t *testing.T) {
 	}
 }
 
+func TestAPIAttributesRedactUnmodeledSecrets(t *testing.T) {
+	const sentinel = "asc-red-sentinel-unmodeled-secret-5f19"
+	var attrs BuildAttributes
+	apple := `{"version":"42","accessToken":"` + sentinel + `","clientSecret":"` + sentinel + `","adminPassword":null,"apiKeyHint":"","assetToken":"public"}`
+	if err := json.Unmarshal([]byte(apple), &attrs); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	output, err := json.Marshal(attrs)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(output), sentinel) {
+		t.Fatalf("read output leaked an unmodeled secret: %s", output)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(output, &got); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	want := map[string]any{"version": "42", "accessToken": RedactedValuePlaceholder, "clientSecret": RedactedValuePlaceholder, "adminPassword": nil, "apiKeyHint": "", "assetToken": "public"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %s", output)
+	}
+}
+
 func TestRedactedReviewDetailHidesPasswordUnderAnyKeyCase(t *testing.T) {
 	const sentinel = "asc-red-sentinel-folded-key-pw-71c2e0"
 	tests := []struct {
@@ -89,8 +113,8 @@ func TestRedactedReviewDetailHidesPasswordUnderAnyKeyCase(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
 			}
-			if strings.Contains(string(output), sentinel) {
-				t.Fatalf("redacted output leaked the password: %s", output)
+			if strings.Contains(string(output), sentinel) || strings.Contains(string(output), "DemoAccountPassword") {
+				t.Fatalf("redacted output leaked the password or kept its folded key: %s", output)
 			}
 			if !strings.Contains(string(output), test.want) {
 				t.Fatalf("expected %s in output, got %s", test.want, output)

@@ -55,14 +55,34 @@ func captureAPIAttributes(data, baseline []byte, modeled reflect.Type, extraName
 		}
 		names = append(names, name)
 	}
-	for key := range original {
+	for key, value := range original {
+		modeledKey := false
 		for _, name := range names {
-			if key != name && strings.EqualFold(key, name) {
-				delete(original, key)
+			if strings.EqualFold(key, name) {
+				modeledKey = true
+				if key != name {
+					delete(original, key)
+				}
 			}
+		}
+		if !modeledKey && isSecretAttributeName(key) && string(value) != "null" && string(value) != `""` {
+			original[key] = json.RawMessage(`"` + RedactedValuePlaceholder + `"`)
 		}
 	}
 	return apiAttributes{original: original, decoded: decoded}, nil
+}
+
+// isSecretAttributeName reports unmodeled attribute names that may carry a
+// credential. Replaying Apple's object must not print one that no modeled
+// redaction knows about.
+func isSecretAttributeName(name string) bool {
+	lower := strings.ToLower(name)
+	for _, marker := range []string{"password", "secret", "privatekey", "apikey", "accesstoken", "refreshtoken", "authtoken"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // marshal encodes value, a method-free alias of an attributes type, over
