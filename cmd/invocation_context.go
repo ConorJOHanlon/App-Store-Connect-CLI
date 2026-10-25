@@ -202,7 +202,7 @@ func printConciseUnknownFlag(root *ffcli.Command, analysis invocationAnalysis, c
 	printFlagSuggestions(os.Stderr, unknownFlagSuggestions(
 		analysis.command.FlagSet,
 		flagName,
-		unknownFlagSuggestionOptions{allowSelectorFallback: true},
+		unknownFlagSuggestionOptions{allowSelectorFallback: true, passed: passedFlagNames(args)},
 	))
 	fmt.Fprintln(os.Stderr, "For help:")
 	fmt.Fprintf(os.Stderr, "  %s --help\n", commandName)
@@ -249,6 +249,20 @@ func isMetadataVersionValue(value string) bool {
 	}
 	_, boolErr := strconv.ParseBool(value)
 	return boolErr != nil
+}
+
+func passedFlagNames(args []string) []string {
+	var names []string
+	for _, arg := range args {
+		if arg == "--" {
+			break
+		}
+		if name, ok := flagLookupName(arg); ok {
+			name, _, _ = strings.Cut(name, "=")
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 func flagLookupName(token string) (string, bool) {

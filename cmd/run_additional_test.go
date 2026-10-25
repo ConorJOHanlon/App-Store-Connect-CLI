@@ -1558,7 +1558,7 @@ func TestRun_GroupsBuildsListRecoversGroupsListFlags(t *testing.T) {
 		{
 			name:       "group id mixed with a groups list flag",
 			args:       []string{"testflight", "groups", "builds", "list", "--group-id", "GROUP_ID", "--app", "APP_ID"},
-			wantStderr: "Error: unknown flag `--app` for `asc testflight groups builds list`\nTry:\n  --group-id\n" + help,
+			wantStderr: "Error: unknown flag `--app` for `asc testflight groups builds list`\n" + help,
 		},
 	}
 	for _, test := range tests {

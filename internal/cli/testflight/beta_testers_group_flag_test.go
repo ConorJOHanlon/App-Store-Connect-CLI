@@ -258,6 +258,16 @@ func TestBetaGroupNameResolvesAcrossUnicodeSpaces(t *testing.T) {
 		resolve func(*asc.BetaGroupsResponse, string) (string, error)
 	}{
 		{"testflight", matchBetaGroupID},
+		{"config export", func(groups *asc.BetaGroupsResponse, input string) (string, error) {
+			matched, err := filterBetaGroups(groups.Data, input)
+			if err != nil {
+				return "", err
+			}
+			if len(matched) != 1 {
+				return "", fmt.Errorf("matched %d groups, want 1", len(matched))
+			}
+			return matched[0].ID, nil
+		}},
 		{"shared", func(groups *asc.BetaGroupsResponse, input string) (string, error) {
 			resolved, err := shared.ResolveBetaGroupsFromList([]string{input}, groups, shared.ResolveBetaGroupsOptions{})
 			if err != nil {
