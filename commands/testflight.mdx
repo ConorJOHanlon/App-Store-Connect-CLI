@@ -73,12 +73,14 @@ build page. A partial lookup prints the matches and per-group failures with
 
 ### List a group's contents
 
-Use a group ID to list the builds in a group. No `--app` is needed. `--fields`
-selects a sparse fieldset; App Store Connect does not sort this collection:
+Use a group ID to list the builds or testers in a group. No `--app` is needed.
+`--fields` selects a sparse fieldset; App Store Connect does not sort these
+collections:
 
 ```bash  theme={null}
 asc testflight groups builds list --group-id GROUP_ID --fields version,uploadedDate,processingState
 asc testflight groups builds list --group-id GROUP_ID --paginate
+asc testflight groups testers list --group-id GROUP_ID --fields email,state --paginate
 ```
 
 ### Testers

@@ -222,6 +222,7 @@ Examples:
   asc testflight beta-groups create --app "APP_ID" --name "Internal Testers" --internal
   asc testflight beta-groups app view --group-id "GROUP_ID"
   asc testflight beta-groups builds list --group-id "GROUP_ID"
+  asc testflight beta-groups testers list --group-id "GROUP_ID"
   asc testflight beta-groups beta-recruitment-criteria view --group-id "GROUP_ID"
   asc testflight beta-groups beta-recruitment-criterion-compatible-build-check view --group-id "GROUP_ID"`,
 		FlagSet:   fs,
@@ -237,6 +238,7 @@ Examples:
 			BetaGroupsAddTestersCommand(),
 			BetaGroupsRemoveTestersCommand(),
 			BetaGroupsBuildsCommand(),
+			BetaGroupsTestersCommand(),
 			BetaGroupsRelationshipsCommand(),
 			BetaGroupsDeleteCommand(),
 		},

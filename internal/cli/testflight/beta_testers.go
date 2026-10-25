@@ -111,6 +111,9 @@ func BetaTestersListCommand() *ffcli.Command {
 		ShortHelp:  "List TestFlight beta testers for an app.",
 		LongHelp: `List TestFlight beta testers for an app.
 
+To list one group's testers without --app, run
+asc testflight groups testers list --group-id "GROUP_ID".
+
 --include adds the related resources to the response's top-level "included"
 array, which only JSON output renders. App Store Connect returns at most 50
 related resources per included relationship. --paginate pages the tester

@@ -40,6 +40,22 @@ func BetaGroupsBuildsCommand() *ffcli.Command {
 	})
 }
 
+// BetaGroupsTestersCommand returns the beta-groups testers command group.
+func BetaGroupsTestersCommand() *ffcli.Command {
+	return betaGroupReadGroupCommand(betaGroupReadConfig{
+		resource:    "testers",
+		fieldsUsage: "Fields to include for testers, comma-separated",
+		fieldValues: betaGroupTesterFieldsValues,
+		fetch: func(ctx context.Context, client *asc.Client, groupID, next string, limit int, fields []string) (asc.PaginatedResponse, error) {
+			return client.GetBetaGroupTesters(ctx, groupID,
+				asc.WithBetaGroupTestersLimit(limit),
+				asc.WithBetaGroupTestersNextURL(next),
+				asc.WithBetaGroupTestersFields(fields),
+			)
+		},
+	})
+}
+
 func betaGroupReadGroupCommand(config betaGroupReadConfig) *ffcli.Command {
 	fs := flag.NewFlagSet(config.resource, flag.ExitOnError)
 

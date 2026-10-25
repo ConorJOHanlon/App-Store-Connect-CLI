@@ -26,6 +26,14 @@ func TestTestFlightGroupReadsSendRequest(t *testing.T) {
 				"limit":          {"5"},
 			},
 		},
+		{
+			name:     "group testers with fields",
+			args:     []string{"testflight", "groups", "testers", "list", "--group-id", "group-1", "--fields", "email,state"},
+			wantPath: "/v1/betaGroups/group-1/betaTesters",
+			wantQuery: url.Values{
+				"fields[betaTesters]": {"email,state"},
+			},
+		},
 	}
 
 	for _, test := range tests {
