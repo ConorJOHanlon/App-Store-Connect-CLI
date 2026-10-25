@@ -25,7 +25,7 @@ func SubscriptionsPricingPPPCommand() *ffcli.Command {
 	appID := addSubscriptionLookupAppFlag(fs)
 	baseTerritory := fs.String("base-territory", "USA", "Base territory (accepts alpha-2, alpha-3, or exact English country name)")
 	basePrice := fs.String("base-price", "", "Customer price in the base territory (required)")
-	rounding := fs.String("round", string(subscriptionPriceDeriveNearest), "Price-point resolution: exact, nearest, up, or down")
+	rounding := fs.String("round", string(shared.PriceRoundingNearest), "Price-point resolution: exact, nearest, up, or down")
 	startDate := fs.String("start-date", "", "Start date (YYYY-MM-DD) for scheduled price changes")
 	preserved := fs.Bool("preserved", false, "Preserve current prices for existing subscribers")
 	autoStartDate := fs.Bool("auto-start-date", true, "Automatically schedule approved/live subscriptions for tomorrow when --start-date is omitted")
@@ -85,7 +85,7 @@ Examples:
 				return shared.MissingRequiredUsageError("--base-price")
 			}
 			basePriceValue, ok := new(big.Rat).SetString(price)
-			if !isSubscriptionPriceDeriveDecimal(price) || !ok || basePriceValue.Sign() <= 0 {
+			if !shared.IsPriceDecimal(price) || !ok || basePriceValue.Sign() <= 0 {
 				return shared.UsageError("--base-price must be a positive decimal")
 			}
 			territory, err := ascterritory.Normalize(*baseTerritory)
@@ -96,7 +96,7 @@ Examples:
 			if !indexed {
 				return shared.UsageError(fmt.Sprintf("invalid --base-territory: no purchasing-power price level for %s", territory))
 			}
-			roundMode, err := normalizeSubscriptionPriceDeriveRounding(*rounding)
+			roundMode, err := shared.ParsePriceRounding(*rounding)
 			if err != nil {
 				return err
 			}
@@ -156,7 +156,7 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("subscriptions pricing ppp: %w", err)
 			}
-			baseResolution, err := resolveSubscriptionPriceDerivePoint(baseCandidates[territory], basePriceValue, subscriptionPriceDeriveExact)
+			baseResolution, err := shared.ResolvePriceLadderPoint(baseCandidates[territory], basePriceValue, shared.PriceRoundingExact)
 			if err != nil {
 				return fmt.Errorf("subscriptions pricing ppp: --base-price %s in %s: %w", price, territory, err)
 			}
@@ -210,7 +210,7 @@ Examples:
 				subID,
 				sourcePrices,
 				currentPrices,
-				func(target string) (*big.Rat, bool) { return subscriptionPricePPPMultiple(baseLevel, target) },
+				func(target string) (*big.Rat, bool) { return pppindex.RelativeLevel(baseLevel, target) },
 				roundMode,
 				*workers,
 			)
@@ -236,7 +236,7 @@ Examples:
 				Rows:              rows,
 				Verification:      asc.SubscriptionPricingDeriveVerification{Status: "skipped"},
 			}
-			result.Summary = summarizeSubscriptionPriceDeriveRows(rows)
+			result.Summary = shared.SummarizePriceLadderRows(rows)
 
 			if result.Summary.Unresolved > 0 {
 				if err := shared.PrintOutput(result, *output.Output, *output.Pretty); err != nil {
@@ -272,17 +272,4 @@ Examples:
 			return nil
 		},
 	}
-}
-
-func subscriptionPricePPPMultiple(baseLevel *big.Rat, territory string) (*big.Rat, bool) {
-	level, ok := pppindex.PriceLevel(territory)
-	if !ok {
-		return nil, false
-	}
-	scaled := new(big.Rat).Quo(level, baseLevel)
-	scaled.Mul(scaled, big.NewRat(10000, 1))
-	twiceNumerator := new(big.Int).Mul(scaled.Num(), big.NewInt(2))
-	twiceNumerator.Add(twiceNumerator, scaled.Denom())
-	rounded := twiceNumerator.Quo(twiceNumerator, new(big.Int).Mul(scaled.Denom(), big.NewInt(2)))
-	return new(big.Rat).SetFrac(rounded, big.NewInt(10000)), true
 }

@@ -67,3 +67,18 @@ func PriceLevel(territory string) (*big.Rat, bool) {
 	}
 	return new(big.Rat).Set(level), true
 }
+
+// RelativeLevel returns a territory's price level divided by baseLevel,
+// rounded half up to 4 decimals.
+func RelativeLevel(baseLevel *big.Rat, territory string) (*big.Rat, bool) {
+	level, ok := PriceLevel(territory)
+	if !ok {
+		return nil, false
+	}
+	scaled := new(big.Rat).Quo(level, baseLevel)
+	scaled.Mul(scaled, big.NewRat(10000, 1))
+	twiceNumerator := new(big.Int).Mul(scaled.Num(), big.NewInt(2))
+	twiceNumerator.Add(twiceNumerator, scaled.Denom())
+	rounded := twiceNumerator.Quo(twiceNumerator, new(big.Int).Mul(scaled.Denom(), big.NewInt(2)))
+	return new(big.Rat).SetFrac(rounded, big.NewInt(10000)), true
+}

@@ -33,6 +33,7 @@ Examples:
   asc pricing price-points view --price-point "PRICE_POINT_ID"
   asc pricing price-points equalizations --price-point "PRICE_POINT_ID"
   asc pricing tiers --app "123456789" --territory "US"
+  asc pricing ppp --app "123456789" --base-price "4.99" --dry-run
   asc pricing schedule view --app "123456789"
   asc pricing schedule view --id "SCHEDULE_ID"
   asc pricing schedule create --app "123456789" --price-point "PRICE_POINT_ID" --base-territory "United States" --start-date "YYYY-MM-DD"
@@ -55,6 +56,7 @@ Examples:
 			PricingPricePointsCommand(),
 			PricingTiersCommand(),
 			PricingScheduleCommand(),
+			PricingPPPCommand(),
 			PricingAvailabilityCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
@@ -156,7 +158,8 @@ func PricingPricePointsCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("pricing price-points", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID)")
-	territory := fs.String("territory", "", "Filter by territory (accepts alpha-2, alpha-3, or exact English country name)")
+	territory := fs.String("territory", "", "Filter by territories, comma-separated (accepts alpha-2, alpha-3, or exact English country name)")
+	include := fs.String("include", "", "Relationships to include (comma-separated): territory")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Next page URL from a previous response")
 	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")
@@ -168,9 +171,13 @@ func PricingPricePointsCommand() *ffcli.Command {
 		ShortHelp:  "List and inspect app price points.",
 		LongHelp: `List app price points for an app.
 
+--territory accepts several territories. Use --include territory to return each
+price point's territory and currency.
+
 Examples:
   asc pricing price-points --app "123456789"
   asc pricing price-points --app "123456789" --territory "United States"
+  asc pricing price-points --app "123456789" --territory "DEU,GBR" --include territory --paginate
   asc pricing price-points --app "123456789" --paginate
   asc pricing price-points view --price-point "PRICE_POINT_ID"
   asc pricing price-points equalizations --price-point "PRICE_POINT_ID"`,
@@ -187,8 +194,14 @@ Examples:
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return shared.UsageErrorf("pricing price-points: %v", err)
 			}
-			if err := shared.RejectNextFlagConflicts(fs, *next, "pricing price-points", "territory"); err != nil {
+			if err := shared.RejectNextFlagConflicts(fs, *next, "pricing price-points", "territory", "include"); err != nil {
 				return err
+			}
+			includes := shared.SplitCSV(*include)
+			for _, value := range includes {
+				if value != "territory" {
+					return shared.UsageError("--include must be: territory")
+				}
 			}
 
 			resolvedAppID := shared.ResolveAppID(*appID)
@@ -205,18 +218,16 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			territoryID := strings.TrimSpace(*territory)
-			if territoryID != "" {
-				territoryID, err = ascterritory.Normalize(territoryID)
-				if err != nil {
-					return shared.UsageError(err.Error())
-				}
+			territoryIDs, err := ascterritory.NormalizeMany(shared.SplitCSV(*territory))
+			if err != nil {
+				return shared.UsageError(err.Error())
 			}
 
 			opts := []asc.PricePointsOption{
 				asc.WithPricePointsLimit(*limit),
 				asc.WithPricePointsNextURL(*next),
-				asc.WithPricePointsTerritory(territoryID),
+				asc.WithPricePointsTerritory(strings.Join(territoryIDs, ",")),
+				asc.WithPricePointsInclude(includes),
 			}
 
 			if *paginate {
@@ -301,10 +312,11 @@ func PricingPricePointsEqualizationsCommand() *ffcli.Command {
 		ParentType:  "appPricePoints",
 		LimitMax:    200,
 		ErrorPrefix: "pricing price-points equalizations",
-		FetchPage: func(ctx context.Context, client *asc.Client, pricePointID string, limit int, next string) (asc.PaginatedResponse, error) {
+		FetchPage: func(ctx context.Context, client *asc.Client, pricePointID string, limit int, next string, include []string) (asc.PaginatedResponse, error) {
 			opts := []asc.PricePointsOption{
 				asc.WithPricePointsLimit(limit),
 				asc.WithPricePointsNextURL(next),
+				asc.WithPricePointsInclude(include),
 			}
 			return client.GetAppPricePointEqualizations(ctx, pricePointID, opts...)
 		},
