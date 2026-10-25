@@ -15,17 +15,17 @@ func TestScreenshotsReorder(t *testing.T) {
 		name       string
 		args       []string
 		wantPatch  []string
-		wantUsage  bool
+		wantUsage  string
 		wantErr    string
 		wantNoCall bool
 	}{
 		{name: "full set in new order", args: []string{"--set-id", "set-1", "--ids", "c,a,b"}, wantPatch: []string{"c", "a", "b"}},
 		{name: "missing set member", args: []string{"--set-id", "set-1", "--ids", "c,a"}, wantErr: `missing from --ids: b`},
 		{name: "unknown id", args: []string{"--set-id", "set-1", "--ids", "c,a,b,x"}, wantErr: `not in set set-1: x`},
-		{name: "duplicate id", args: []string{"--set-id", "set-1", "--ids", "a,a,b,c"}, wantUsage: true, wantNoCall: true},
-		{name: "empty id", args: []string{"--set-id", "set-1", "--ids", "a,,b,c"}, wantUsage: true, wantNoCall: true},
-		{name: "missing ids", args: []string{"--set-id", "set-1"}, wantUsage: true, wantNoCall: true},
-		{name: "missing set id", args: []string{"--ids", "a,b,c"}, wantUsage: true, wantNoCall: true},
+		{name: "duplicate id", args: []string{"--set-id", "set-1", "--ids", "a,a,b,c"}, wantUsage: `Error: screenshots reorder: --ids contains duplicate ID "a"`, wantNoCall: true},
+		{name: "empty id", args: []string{"--set-id", "set-1", "--ids", "a,,b,c"}, wantUsage: "Error: screenshots reorder: --ids contains an empty ID", wantNoCall: true},
+		{name: "missing ids", args: []string{"--set-id", "set-1"}, wantUsage: "Error: screenshots reorder: --ids is required", wantNoCall: true},
+		{name: "missing set id", args: []string{"--ids", "a,b,c"}, wantUsage: "Error: screenshots reorder: --set-id is required", wantNoCall: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -69,8 +69,8 @@ func TestScreenshotsReorder(t *testing.T) {
 				t.Fatalf("expected no requests, got %d", calls)
 			}
 			switch {
-			case tt.wantUsage:
-				if !isUsageClassError(err) || stdout != "" || !strings.Contains(stderr, "Error:") {
+			case tt.wantUsage != "":
+				if !isUsageClassError(err) || stdout != "" || !strings.HasPrefix(stderr, tt.wantUsage) {
 					t.Fatalf("expected usage error, got err=%v stdout=%q stderr=%q", err, stdout, stderr)
 				}
 			case tt.wantErr != "":

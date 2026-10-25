@@ -32,6 +32,7 @@ when an ID is missing from --ids or does not belong to the set. It does not
 add, remove, or delete screenshots.
 
 Examples:
+  asc screenshots list --set-id "SET_ID"
   asc screenshots reorder --set-id "SET_ID" --ids "THIRD_ID,FIRST_ID,SECOND_ID"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
