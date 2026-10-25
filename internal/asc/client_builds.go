@@ -371,8 +371,17 @@ func (c *Client) GetBuilds(ctx context.Context, appID string, opts ...BuildsOpti
 }
 
 // GetBuild retrieves a single build by ID.
-func (c *Client) GetBuild(ctx context.Context, buildID string) (*BuildResponse, error) {
+func (c *Client) GetBuild(ctx context.Context, buildID string, opts ...BuildOption) (*BuildResponse, error) {
+	query := &buildQuery{}
+	for _, opt := range opts {
+		opt(query)
+	}
 	path := fmt.Sprintf("/v1/builds/%s", buildID)
+	if len(query.include) > 0 {
+		values := url.Values{}
+		addCSV(values, "include", query.include)
+		path += "?" + values.Encode()
+	}
 	data, err := c.do(ctx, "GET", path, nil)
 	if err != nil {
 		return nil, err
