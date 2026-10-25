@@ -120,8 +120,8 @@ var unknownChildSynonyms = map[string]map[string][]string{
 		"add":  {"asc iap create --app APP_ID --product-id PRODUCT_ID --ref-name NAME --type TYPE"},
 	},
 	"asc localizations": {
-		"get":  {"asc localizations list --version VERSION_ID", "asc localizations download --version VERSION_ID --path ./localizations"},
-		"show": {"asc localizations list --version VERSION_ID", "asc localizations download --version VERSION_ID --path ./localizations"},
+		"get":  {"asc localizations view --id LOCALIZATION_ID", "asc localizations list --version VERSION_ID"},
+		"show": {"asc localizations view --id LOCALIZATION_ID", "asc localizations list --version VERSION_ID"},
 		"add":  {"asc localizations create --version VERSION_ID --locale LOCALE"},
 	},
 	"asc metadata": {
