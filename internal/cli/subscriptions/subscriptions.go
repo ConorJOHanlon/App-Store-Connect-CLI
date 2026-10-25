@@ -441,7 +441,7 @@ func SubscriptionsListCommand() *ffcli.Command {
 	appID := shared.BindResourceIDFlag(fs, "app", "apps", "App Store Connect app ID (or ASC_APP_ID env); lists subscriptions across all groups")
 	fields := fs.String("fields", "", "Sparse fields for subscriptions")
 	versionFields := fs.String("version-fields", "", "Sparse fields for included subscriptionVersions")
-	include := fs.String("include", "", "Include relationships (supports versions)")
+	include := fs.String("include", "", "Include relationships (comma-separated): "+strings.Join(subscriptionIncludeList(), ", "))
 	versionsLimit := fs.Int("versions-limit", 0, "Maximum included versions (1-50)")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
@@ -457,6 +457,7 @@ func SubscriptionsListCommand() *ffcli.Command {
 Examples:
   asc subscriptions list --group-id "GROUP_ID"
   asc subscriptions list --group-id "GROUP_ID" --include versions --versions-limit 10
+  asc subscriptions list --group-id "GROUP_ID" --include subscriptionLocalizations,appStoreReviewScreenshot
   asc subscriptions list --group-id "GROUP_ID" --paginate
   asc subscriptions list --app "APP_ID" --paginate`,
 		FlagSet:   fs,
@@ -707,7 +708,7 @@ func SubscriptionsGetCommand() *ffcli.Command {
 	subID := shared.BindResourceIDFlag(fs, "id", "subscriptions", "Subscription ID")
 	fields := fs.String("fields", "", "Sparse fields for subscriptions")
 	versionFields := fs.String("version-fields", "", "Sparse fields for included subscriptionVersions")
-	include := fs.String("include", "", "Include relationships (supports versions)")
+	include := fs.String("include", "", "Include relationships (comma-separated): "+strings.Join(subscriptionIncludeList(), ", "))
 	versionsLimit := fs.Int("versions-limit", 0, "Maximum included versions (1-50)")
 	output := shared.BindOutputFlags(fs)
 
@@ -719,7 +720,8 @@ func SubscriptionsGetCommand() *ffcli.Command {
 
 Examples:
   asc subscriptions view --id "SUB_ID"
-  asc subscriptions view --id "SUB_ID" --include versions --versions-limit 10`,
+  asc subscriptions view --id "SUB_ID" --include versions --versions-limit 10
+  asc subscriptions view --id "SUB_ID" --include subscriptionLocalizations,appStoreReviewScreenshot`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
