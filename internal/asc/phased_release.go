@@ -27,6 +27,8 @@ type AppStoreVersionPhasedReleaseAttributes struct {
 	StartDate          string             `json:"startDate,omitempty"`
 	TotalPauseDuration int                `json:"totalPauseDuration,omitempty"`
 	CurrentDayNumber   int                `json:"currentDayNumber,omitempty"`
+
+	api apiAttributes
 }
 
 // AppStoreVersionPhasedReleaseResponse represents an API response for a phased release.

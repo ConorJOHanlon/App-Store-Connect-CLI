@@ -35,7 +35,7 @@ type AppAttributes struct {
 	SubscriptionStatusURLForSandbox        *string                       `json:"subscriptionStatusUrlForSandbox,omitempty"`
 	SubscriptionStatusURLVersionForSandbox *SubscriptionStatusURLVersion `json:"subscriptionStatusUrlVersionForSandbox,omitempty"`
 
-	raw rawAttributes
+	api apiAttributes
 }
 
 // AppUpdateAttributes describes fields for updating an app.

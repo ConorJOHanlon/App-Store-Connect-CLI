@@ -14,7 +14,7 @@ configured with an empty ID.
 Without `--include`, `asc versions view` prints a reduced summary (`id`,
 `versionString`, `platform`, `state`, `downloadable`, and the
 `--include-build`/`--include-submission` IDs) that is not Apple's envelope. It
-keeps that shape in this release and prints this warning to stderr:
+keeps that shape in this release and, for JSON output, prints this warning to stderr:
 
 ```text
 Warning: `asc versions view` without --include prints a reduced summary; the next major release prints Apple's appStoreVersions envelope instead. Pass --include to get the envelope now: --include build replaces --include-build, --include appStoreVersionSubmission replaces --include-submission.

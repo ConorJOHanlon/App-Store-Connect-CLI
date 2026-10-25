@@ -306,11 +306,15 @@ func AssetsScreenshotsListCommand() *ffcli.Command {
 	versionID := shared.BindResourceIDFlag(fs, "version-id", "appStoreVersions", "App Store version ID")
 	platform := fs.String("platform", "", "Platform: IOS, MAC_OS, TV_OS, VISION_OS (defaults to IOS with --version; with --version-id requires --app or ASC_APP_ID)")
 	locale := fs.String("locale", "", "Localization locale (optional with --version or --version-id; omit to list every localization of the version)")
+	setID := shared.BindResourceIDFlag(fs, "set-id", "appScreenshotSets", "App screenshot set ID; prints Apple's appScreenshots response unmodified")
+	fields := fs.String("fields", "", "With --set-id: appScreenshots fields, comma-separated: "+strings.Join(screenshotSetListFields, ", "))
+	limit := fs.Int("limit", 0, "With --set-id: maximum results per page (1-200; 0 uses server default)")
+	paginate := fs.Bool("paginate", false, "With --set-id: fetch all pages and aggregate the collection")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
 		Name:       "list",
-		ShortUsage: "asc screenshots list (--version-localization \"VERSION_LOCALIZATION_ID\" | --version-id \"VERSION_ID\" [--locale \"LOCALE\"] | --app \"APP_ID\" --version \"VERSION\" [--locale \"LOCALE\"])",
+		ShortUsage: "asc screenshots list (--version-localization \"VERSION_LOCALIZATION_ID\" | --version-id \"VERSION_ID\" [--locale \"LOCALE\"] | --app \"APP_ID\" --version \"VERSION\" [--locale \"LOCALE\"] | --set-id \"SET_ID\" [--fields FIELDS] [--limit N] [--paginate])",
 		ShortHelp:  "List screenshots for a localization.",
 		LongHelp: `List screenshots for a localization.
 
@@ -325,16 +329,31 @@ array with one entry per locale and leaves the top-level "versionLocalizationId"
 and "sets" keys empty, and table output gains a leading Locale column. Pass
 --locale to scope the listing to one localization.
 
+--set-id lists the screenshots of one screenshot set in the set's order and
+prints Apple's GET /v1/appScreenshotSets/{id}/appScreenshots response
+unmodified, including assetDeliveryState warnings and uploadOperations.
+--fields, --limit, and --paginate apply only to --set-id.
+
 Examples:
   asc screenshots list --version-localization "VERSION_LOCALIZATION_ID"
   asc screenshots list --version-id "VERSION_ID" --locale "en-US"
   asc screenshots list --app "123456789" --version "1.2.3" --locale "en-US"
-  asc screenshots list --app "123456789" --version "1.2.3"`,
+  asc screenshots list --app "123456789" --version "1.2.3"
+  asc screenshots list --set-id "SET_ID" --fields "fileName,assetDeliveryState" --paginate`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if err := shared.RejectPositionalArgs(args); err != nil {
 				return err
+			}
+			if strings.TrimSpace(*setID) != "" {
+				if strings.TrimSpace(*localizationID) != "" || strings.TrimSpace(*appID) != "" || strings.TrimSpace(*version) != "" || strings.TrimSpace(*versionID) != "" || strings.TrimSpace(*platform) != "" || strings.TrimSpace(*locale) != "" {
+					return shared.UsageError("screenshots list: --set-id cannot be combined with --version-localization, --app, --version, --version-id, --platform, or --locale")
+				}
+				return executeScreenshotSetListCommand(ctx, strings.TrimSpace(*setID), *fields, *limit, *paginate, output)
+			}
+			if strings.TrimSpace(*fields) != "" || *limit != 0 || *paginate {
+				return shared.UsageError("screenshots list: --fields, --limit, and --paginate require --set-id")
 			}
 
 			result, err := executeScreenshotListCommand(ctx, screenshotListCommandOptions{

@@ -475,7 +475,9 @@ envelope instead. Any --include prints the envelope now.`,
 				return fmt.Errorf("versions view: %w", err)
 			}
 
-			fmt.Fprintln(os.Stderr, "Warning: `asc versions view` without --include prints a reduced summary; the next major release prints Apple's appStoreVersions envelope instead. Pass --include to get the envelope now: --include build replaces --include-build, --include appStoreVersionSubmission replaces --include-submission.")
+			if format := shared.NormalizeOutputFormat(*output.Output); format == "" || format == "json" {
+				fmt.Fprintln(os.Stderr, "Warning: `asc versions view` without --include prints a reduced summary; the next major release prints Apple's appStoreVersions envelope instead. Pass --include to get the envelope now: --include build replaces --include-build, --include appStoreVersionSubmission replaces --include-submission.")
+			}
 			result := &asc.AppStoreVersionDetailResult{
 				ID:            versionResp.Data.ID,
 				VersionString: versionResp.Data.Attributes.VersionString,

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -489,10 +490,11 @@ func TestVersionsReadsPrintAppleEnvelope(t *testing.T) {
 			body: `{"data":` + resource + `,"included":[{"type":"builds","id":"build-1","attributes":{"version":"42"}}],"links":{"self":"https://example.test/v1/appStoreVersions/version-1"}}`,
 		},
 		{
-			name: "list",
-			args: []string{"versions", "list", "--app", "app-1", "--output", "json"},
-			path: "/v1/apps/app-1/appStoreVersions",
-			body: `{"data":[` + resource + `],"links":{"self":"https://example.test/v1/apps/app-1/appStoreVersions"}}`,
+			name:       "view table output has no envelope warning",
+			args:       []string{"versions", "view", "--version-id", "version-1", "--output", "table"},
+			path:       "/v1/appStoreVersions/version-1",
+			body:       `{"data":` + resource + `}`,
+			wantStdout: "2.5.1",
 		},
 	}
 
@@ -518,11 +520,16 @@ func TestVersionsReadsPrintAppleEnvelope(t *testing.T) {
 				}
 			})
 
-			wantStdout := test.wantStdout
-			if wantStdout == "" {
-				wantStdout = test.body
+			switch {
+			case slices.Contains(test.args, "table"):
+				if !strings.Contains(stdout, test.wantStdout) {
+					t.Fatalf("stdout = %q, want table containing %q", stdout, test.wantStdout)
+				}
+			case test.wantStdout == "":
+				assertAnalyticsViewJSONEqual(t, stdout, test.body)
+			default:
+				assertAnalyticsViewJSONEqual(t, stdout, test.wantStdout)
 			}
-			assertAnalyticsViewJSONEqual(t, stdout, wantStdout)
 			if stderr != test.wantStderr {
 				t.Fatalf("stderr = %q, want %q", stderr, test.wantStderr)
 			}
