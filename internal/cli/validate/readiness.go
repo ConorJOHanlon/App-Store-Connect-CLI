@@ -103,6 +103,11 @@ func BuildReadinessReport(ctx context.Context, opts ReadinessOptions) (validatio
 	subscriptionFetchSkipReason := ""
 	var iaps []validation.IAP
 	iapFetchSkipReason := ""
+	platform := strings.TrimSpace(opts.Platform)
+	if platform == "" {
+		platform = string(versionData.response.Data.Attributes.Platform)
+	}
+
 	var customProductPageLocalizations []validation.CustomProductPageLocalization
 	customProductPageKeywordsSkipReason := ""
 
@@ -221,6 +226,12 @@ func BuildReadinessReport(ctx context.Context, opts ReadinessOptions) (validatio
 			return nil
 		},
 		func(taskCtx context.Context) error {
+			// Apple supports custom product pages only on iOS and iPadOS, which
+			// share the IOS version platform.
+			if !strings.EqualFold(platform, string(asc.PlatformIOS)) {
+				customProductPageKeywordsSkipReason = fmt.Sprintf("Custom product page keyword checks were skipped because custom product pages apply only to iOS and iPadOS, and this version's platform is %s", platform)
+				return nil
+			}
 			fetched, fetchErr := fetchCustomProductPageKeywords(taskCtx, client, opts.AppID)
 			if fetchErr != nil {
 				// The keyword check is advisory, so any failure other than
@@ -285,11 +296,6 @@ func BuildReadinessReport(ctx context.Context, opts ReadinessOptions) (validatio
 		}
 		return appInfoLocalizations[i].ID < appInfoLocalizations[j].ID
 	})
-
-	platform := strings.TrimSpace(opts.Platform)
-	if platform == "" {
-		platform = string(versionData.response.Data.Attributes.Platform)
-	}
 
 	var supportsIPad *bool
 	if opts.IPA != nil {
