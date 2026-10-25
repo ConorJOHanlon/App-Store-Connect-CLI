@@ -98,34 +98,65 @@ Examples:
 	}
 }
 
-// localizationViewRows lists the ID and every attribute Apple returned, so
-// table and markdown output show exactly the fields a --fields request asked for.
+// localizationViewRows lists the ID, every attribute, and every relationship
+// Apple returned, so table and markdown output show exactly the fields a
+// --fields request asked for. A relationship shows its linked IDs when the
+// response carries linkage, otherwise its related link.
 func localizationViewRows(response []byte) ([]string, [][]string, error) {
 	var envelope struct {
 		Data struct {
-			ID         string                     `json:"id"`
-			Attributes map[string]json.RawMessage `json:"attributes"`
+			ID            string                     `json:"id"`
+			Attributes    map[string]json.RawMessage `json:"attributes"`
+			Relationships map[string]struct {
+				Data  json.RawMessage `json:"data"`
+				Links struct {
+					Related string `json:"related"`
+				} `json:"links"`
+			} `json:"relationships"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(response, &envelope); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-	keys := make([]string, 0, len(envelope.Data.Attributes))
-	for key := range envelope.Data.Attributes {
+	values := make(map[string]string, len(envelope.Data.Attributes)+len(envelope.Data.Relationships))
+	for key, raw := range envelope.Data.Attributes {
+		value := string(raw)
+		var text string
+		if json.Unmarshal(raw, &text) == nil {
+			value = text
+		} else if value == "null" {
+			value = ""
+		}
+		values[key] = value
+	}
+	for key, relationship := range envelope.Data.Relationships {
+		var one struct {
+			ID string `json:"id"`
+		}
+		var many []struct {
+			ID string `json:"id"`
+		}
+		switch {
+		case json.Unmarshal(relationship.Data, &many) == nil && many != nil:
+			ids := make([]string, 0, len(many))
+			for _, item := range many {
+				ids = append(ids, item.ID)
+			}
+			values[key] = strings.Join(ids, ", ")
+		case json.Unmarshal(relationship.Data, &one) == nil && one.ID != "":
+			values[key] = one.ID
+		default:
+			values[key] = relationship.Links.Related
+		}
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	rows := [][]string{{"id", envelope.Data.ID}}
 	for _, key := range keys {
-		raw := envelope.Data.Attributes[key]
-		value := string(raw)
-		var text string
-		if json.Unmarshal(raw, &text) == nil {
-			value = text
-		} else if string(raw) == "null" {
-			value = ""
-		}
-		rows = append(rows, []string{key, value})
+		rows = append(rows, []string{key, values[key]})
 	}
 	return []string{"Field", "Value"}, rows, nil
 }

@@ -104,7 +104,8 @@ func TestLocalizationsViewMarkdownShowsRequestedFields(t *testing.T) {
 		http.DefaultTransport = originalTransport
 	})
 	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		body := `{"data":{"type":"appStoreVersionLocalizations","id":"loc-1","attributes":{"description":"Long text","supportUrl":null}}}`
+		body := `{"data":{"type":"appStoreVersionLocalizations","id":"loc-1","attributes":{"description":"Long text","supportUrl":null},` +
+			`"relationships":{"appScreenshotSets":{"links":{"related":"https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/loc-1/appScreenshotSets"}}}}}`
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(strings.NewReader(body)),
@@ -116,7 +117,7 @@ func TestLocalizationsViewMarkdownShowsRequestedFields(t *testing.T) {
 	root.FlagSet.SetOutput(io.Discard)
 
 	stdout, _ := captureOutput(t, func() {
-		if err := root.Parse([]string{"localizations", "view", "--id", "loc-1", "--fields", "description,supportUrl", "--output", "markdown"}); err != nil {
+		if err := root.Parse([]string{"localizations", "view", "--id", "loc-1", "--fields", "description,supportUrl,appScreenshotSets", "--output", "markdown"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		if err := root.Run(context.Background()); err != nil {
@@ -124,7 +125,12 @@ func TestLocalizationsViewMarkdownShowsRequestedFields(t *testing.T) {
 		}
 	})
 
-	for _, row := range []string{"| id          | loc-1     |", "| description | Long text |", "| supportUrl  |           |"} {
+	for _, row := range []string{
+		"| id                | loc-1",
+		"| description       | Long text",
+		"| supportUrl        |  ",
+		"| appScreenshotSets | https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/loc-1/appScreenshotSets |",
+	} {
 		if !strings.Contains(stdout, row) {
 			t.Fatalf("expected markdown row %q, got %q", row, stdout)
 		}
