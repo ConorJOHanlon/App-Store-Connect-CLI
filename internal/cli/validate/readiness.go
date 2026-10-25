@@ -226,6 +226,8 @@ func BuildReadinessReport(ctx context.Context, opts ReadinessOptions) (validatio
 				// The keyword check is advisory, so any failure other than
 				// cancellation reads as unverified instead of aborting validation.
 				switch {
+				case taskCtx.Err() != nil:
+					return taskCtx.Err()
 				case errors.Is(fetchErr, context.Canceled):
 					return fetchErr
 				case errors.Is(fetchErr, asc.ErrForbidden) || asc.IsUnauthorized(fetchErr):

@@ -39,55 +39,55 @@ func (f *validateDeepWebFixture) GetAgreementsStatus(context.Context) (*asc.WebA
 }
 
 type validateFixture struct {
-	app                           string
-	appStatus                     int
-	versions                      string
-	versionsByQuery               map[string]string
-	versionsStatusByQuery         map[string]int
-	version                       string
-	appInfos                      string
-	appInfoLocs                   string
-	versionLocs                   string
-	ageRating                     string
-	reviewDetails                 string
-	primaryCategory               string
-	build                         string
-	priceSchedule                 string
-	waitForPriceScheduleCtx       bool
-	baseTerritory                 string
-	manualPrices                  string
-	manualPricesStatus            int
-	manualPricesBody              string
-	availabilityV2                string
-	availabilityV2Status          int
-	territories                   string
-	territoriesByQuery            map[string]string
-	pricingTerritories            string
-	pricingTerritoriesByQuery     map[string]string
-	screenshotSets                map[string]string
-	screenshotsBySet              map[string]string
-	subscriptionGroups            string
-	subscriptionsByGroup          map[string]string
-	groupLocalizationsByGroup     map[string]string
-	groupLocalizationStatus       map[string]int
-	imagesBySubscription          map[string]string
-	imageStatusBySubscription     map[string]int
-	imageErrorBySubscription      map[string]error
-	localizationsBySub            map[string]string
-	localizationsStatusBySub      map[string]int
-	pricesBySubscription          map[string]string
-	expectedPriceInclude          string
-	pricesStatusBySubscription    map[string]int
-	priceErrorBySubscription      map[string]error
-	subscriptionGroupsStatus      int
-	iaps                          string
-	iapsStatus                    int
-	customProductPages            string
-	customPageVersionsByPage      map[string]string
-	customPageLocsByVersion       map[string]string
-	customPageKeywordsByLoc       map[string]string
-	customPageKeywordsStatusByLoc map[string]int
-	requestObserver               func(*http.Request)
+	app                        string
+	appStatus                  int
+	versions                   string
+	versionsByQuery            map[string]string
+	versionsStatusByQuery      map[string]int
+	version                    string
+	appInfos                   string
+	appInfoLocs                string
+	versionLocs                string
+	ageRating                  string
+	reviewDetails              string
+	primaryCategory            string
+	build                      string
+	priceSchedule              string
+	waitForPriceScheduleCtx    bool
+	baseTerritory              string
+	manualPrices               string
+	manualPricesStatus         int
+	manualPricesBody           string
+	availabilityV2             string
+	availabilityV2Status       int
+	territories                string
+	territoriesByQuery         map[string]string
+	pricingTerritories         string
+	pricingTerritoriesByQuery  map[string]string
+	screenshotSets             map[string]string
+	screenshotsBySet           map[string]string
+	subscriptionGroups         string
+	subscriptionsByGroup       map[string]string
+	groupLocalizationsByGroup  map[string]string
+	groupLocalizationStatus    map[string]int
+	imagesBySubscription       map[string]string
+	imageStatusBySubscription  map[string]int
+	imageErrorBySubscription   map[string]error
+	localizationsBySub         map[string]string
+	localizationsStatusBySub   map[string]int
+	pricesBySubscription       map[string]string
+	expectedPriceInclude       string
+	pricesStatusBySubscription map[string]int
+	priceErrorBySubscription   map[string]error
+	subscriptionGroupsStatus   int
+	iaps                       string
+	iapsStatus                 int
+	customProductPages         string
+	customPageVersionsByPage   map[string]string
+	customPageLocsByVersion    map[string]string
+	customPageKeywordsByLoc    map[string]string
+	customPageKeywordStatus    map[string]int
+	requestObserver            func(*http.Request)
 }
 
 func newValidateTestClient(t *testing.T, fixture validateFixture) *asc.Client {
@@ -297,7 +297,7 @@ func newValidateTestClient(t *testing.T, fixture validateFixture) *asc.Client {
 			}
 		case strings.HasPrefix(path, "/v1/appCustomProductPageLocalizations/") && strings.HasSuffix(path, "/searchKeywords"):
 			localizationID := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/appCustomProductPageLocalizations/"), "/searchKeywords")
-			if status, ok := fixture.customPageKeywordsStatusByLoc[localizationID]; ok {
+			if status, ok := fixture.customPageKeywordStatus[localizationID]; ok {
 				return jsonResponse(status, apiErrorJSONForStatus(status))
 			}
 			if body, ok := fixture.customPageKeywordsByLoc[localizationID]; ok {
@@ -644,7 +644,7 @@ func TestValidateWarnsWhenCustomProductPageKeywordsAreMissingFromVersionKeywords
 				fixture.customPageKeywordsByLoc["cpl-1"] = test.pageKeywords
 			}
 			if test.keywordsStatus != 0 {
-				fixture.customPageKeywordsStatusByLoc = map[string]int{"cpl-1": test.keywordsStatus}
+				fixture.customPageKeywordStatus = map[string]int{"cpl-1": test.keywordsStatus}
 			}
 
 			report, err := runValidateReport(t, fixture)
