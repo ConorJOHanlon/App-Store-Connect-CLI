@@ -118,6 +118,10 @@ var unknownChildSynonyms = map[string]map[string][]string{
 		"get":  {"asc iap view --id IAP_ID", "asc iap list --app APP_ID"},
 		"show": {"asc iap view --id IAP_ID", "asc iap list --app APP_ID"},
 		"add":  {"asc iap create --app APP_ID --product-id PRODUCT_ID --ref-name NAME --type TYPE"},
+		"submit": {
+			"asc review items add --submission SUBMISSION_ID --item-type inAppPurchaseVersions --item-id IAP_VERSION_ID",
+			"asc review submissions-create --app APP_ID --platform IOS",
+		},
 	},
 	"asc localizations": {
 		"get":  {"asc localizations list --version VERSION_ID", "asc localizations download --version VERSION_ID --path ./localizations"},
@@ -204,6 +208,16 @@ var unknownChildSynonyms = map[string]map[string][]string{
 		"create-group": {"asc subscriptions groups create --app APP_ID --reference-name NAME", "asc subscriptions groups list --app APP_ID"},
 		"get":          {"asc subscriptions groups view --id GROUP_ID", "asc subscriptions groups list --app APP_ID"},
 		"show":         {"asc subscriptions groups view --id GROUP_ID", "asc subscriptions groups list --app APP_ID"},
+	},
+	"asc subscriptions review": {
+		"submit": {
+			"asc review items add --submission SUBMISSION_ID --item-type subscriptionVersions --item-id SUBSCRIPTION_VERSION_ID",
+			"asc review submissions-create --app APP_ID --platform IOS",
+		},
+		"submit-group": {
+			"asc review items add --submission SUBMISSION_ID --item-type subscriptionGroupVersions --item-id GROUP_VERSION_ID",
+			"asc review submissions-create --app APP_ID --platform IOS",
+		},
 	},
 	"asc subscriptions review screenshots": {
 		"upload": {"asc subscriptions review screenshots create --subscription-id SUBSCRIPTION_ID --file FILE_PATH"},
