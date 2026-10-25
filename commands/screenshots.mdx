@@ -278,6 +278,15 @@ asc screenshots list --app "123456789" --version "1.2.3"
 asc screenshots list --app "123456789" --version "1.2.3" --locale "en-US"
 ```
 
+List the screenshots of one screenshot set in the set's order. JSON output is
+Apple's `GET /v1/appScreenshotSets/{id}/appScreenshots` response unmodified,
+including `assetDeliveryState` warnings and `uploadOperations`:
+
+```bash  theme={null}
+asc screenshots list --set-id "SET_ID"
+asc screenshots list --set-id "SET_ID" --fields "fileName,assetDeliveryState" --paginate
+```
+
 ### Check Screenshot Sizes
 
 Display supported screenshot dimensions and device types:
@@ -421,6 +430,16 @@ Download existing screenshots from App Store Connect:
 ```bash  theme={null}
 asc screenshots download --version-localization "LOC_ID" \
   --output-dir "./screenshots/downloaded"
+```
+
+### Reorder Screenshots
+
+Set the order of the screenshots in an existing set. `--ids` must list every
+screenshot in the set exactly once; the command reads the set first and sends
+no update when an ID is missing or does not belong to the set:
+
+```bash  theme={null}
+asc screenshots reorder --set-id "SET_ID" --ids "THIRD_ID,FIRST_ID,SECOND_ID"
 ```
 
 ### Delete Screenshots
