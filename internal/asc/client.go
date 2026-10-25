@@ -143,6 +143,8 @@ type AppStoreVersionLocalizationAttributes struct {
 	PromotionalText string `json:"promotionalText,omitempty"`
 	SupportURL      string `json:"supportUrl,omitempty"`
 	WhatsNew        string `json:"whatsNew,omitempty"`
+
+	api apiAttributes
 }
 
 // BetaAppLocalizationAttributes describes TestFlight app localization metadata.
@@ -159,6 +161,8 @@ type BetaAppLocalizationAttributes struct {
 type BetaBuildLocalizationAttributes struct {
 	Locale   string `json:"locale,omitempty"`
 	WhatsNew string `json:"whatsNew,omitempty"`
+
+	api apiAttributes
 }
 
 // AppInfoLocalizationAttributes describes app info localization metadata.
@@ -169,6 +173,8 @@ type AppInfoLocalizationAttributes struct {
 	PrivacyPolicyURL  string `json:"privacyPolicyUrl,omitempty"`
 	PrivacyChoicesURL string `json:"privacyChoicesUrl,omitempty"`
 	PrivacyPolicyText string `json:"privacyPolicyText,omitempty"`
+
+	api apiAttributes
 }
 
 type localizationFieldsUpdateData struct {
@@ -1441,6 +1447,7 @@ func (c *Client) GetAppStoreVersionLocalization(ctx context.Context, localizatio
 
 // CreateAppStoreVersionLocalization creates a localization for an app store version.
 func (c *Client) CreateAppStoreVersionLocalization(ctx context.Context, versionID string, attributes AppStoreVersionLocalizationAttributes) (*AppStoreVersionLocalizationResponse, error) {
+	attributes.api = apiAttributes{}
 	payload := AppStoreVersionLocalizationCreateRequest{
 		Data: AppStoreVersionLocalizationCreateData{
 			Type:       ResourceTypeAppStoreVersionLocalizations,
@@ -1476,6 +1483,7 @@ func (c *Client) CreateAppStoreVersionLocalization(ctx context.Context, versionI
 
 // UpdateAppStoreVersionLocalization updates a localization for an app store version.
 func (c *Client) UpdateAppStoreVersionLocalization(ctx context.Context, localizationID string, attributes AppStoreVersionLocalizationAttributes) (*AppStoreVersionLocalizationResponse, error) {
+	attributes.api = apiAttributes{}
 	// ASC rejects locale in PATCH updates; it's immutable and should only be set on create.
 	attributes.Locale = ""
 	payload := AppStoreVersionLocalizationUpdateRequest{
@@ -1671,6 +1679,7 @@ func (c *Client) GetBetaBuildLocalizationBuildRelationship(ctx context.Context, 
 
 // CreateBetaBuildLocalization creates a beta build localization for a build.
 func (c *Client) CreateBetaBuildLocalization(ctx context.Context, buildID string, attributes BetaBuildLocalizationAttributes) (*BetaBuildLocalizationResponse, error) {
+	attributes.api = apiAttributes{}
 	payload := BetaBuildLocalizationCreateRequest{
 		Data: BetaBuildLocalizationCreateData{
 			Type:       ResourceTypeBetaBuildLocalizations,
@@ -1706,6 +1715,7 @@ func (c *Client) CreateBetaBuildLocalization(ctx context.Context, buildID string
 
 // UpdateBetaBuildLocalization updates a beta build localization by ID.
 func (c *Client) UpdateBetaBuildLocalization(ctx context.Context, localizationID string, attributes BetaBuildLocalizationAttributes) (*BetaBuildLocalizationResponse, error) {
+	attributes.api = apiAttributes{}
 	payload := BetaBuildLocalizationUpdateRequest{
 		Data: BetaBuildLocalizationUpdateData{
 			Type:       ResourceTypeBetaBuildLocalizations,
@@ -1775,6 +1785,7 @@ func (c *Client) GetAppInfoLocalizations(ctx context.Context, appInfoID string, 
 
 // CreateAppInfoLocalization creates a localization for an app info resource.
 func (c *Client) CreateAppInfoLocalization(ctx context.Context, appInfoID string, attributes AppInfoLocalizationAttributes) (*AppInfoLocalizationResponse, error) {
+	attributes.api = apiAttributes{}
 	payload := AppInfoLocalizationCreateRequest{
 		Data: AppInfoLocalizationCreateData{
 			Type:       ResourceTypeAppInfoLocalizations,
@@ -1810,6 +1821,7 @@ func (c *Client) CreateAppInfoLocalization(ctx context.Context, appInfoID string
 
 // UpdateAppInfoLocalization updates a localization for an app info resource.
 func (c *Client) UpdateAppInfoLocalization(ctx context.Context, localizationID string, attributes AppInfoLocalizationAttributes) (*AppInfoLocalizationResponse, error) {
+	attributes.api = apiAttributes{}
 	// ASC rejects locale in PATCH updates; it's immutable and should only be set on create.
 	attributes.Locale = ""
 	payload := AppInfoLocalizationUpdateRequest{
