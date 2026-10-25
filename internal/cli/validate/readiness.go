@@ -103,6 +103,8 @@ func BuildReadinessReport(ctx context.Context, opts ReadinessOptions) (validatio
 	subscriptionFetchSkipReason := ""
 	var iaps []validation.IAP
 	iapFetchSkipReason := ""
+	var customProductPageLocalizations []validation.CustomProductPageLocalization
+	customProductPageKeywordsSkipReason := ""
 
 	if err := runReadinessTasks(
 		ctx,
@@ -218,6 +220,28 @@ func BuildReadinessReport(ctx context.Context, opts ReadinessOptions) (validatio
 			iaps = fetchedIAPs
 			return nil
 		},
+		func(taskCtx context.Context) error {
+			fetched, fetchErr := fetchCustomProductPageKeywords(taskCtx, client, opts.AppID)
+			if fetchErr != nil {
+				// The keyword check is advisory, so any failure other than
+				// cancellation reads as unverified instead of aborting validation.
+				switch {
+				case taskCtx.Err() != nil:
+					return taskCtx.Err()
+				case errors.Is(fetchErr, context.Canceled):
+					return fetchErr
+				case errors.Is(fetchErr, asc.ErrForbidden) || asc.IsUnauthorized(fetchErr):
+					customProductPageKeywordsSkipReason = "Custom product page keyword checks were skipped because this App Store Connect account cannot read custom product pages"
+				case asc.IsRetryable(fetchErr):
+					customProductPageKeywordsSkipReason = "Custom product page keyword checks were skipped because the App Store Connect custom product page endpoints were temporarily unavailable or rate limited"
+				default:
+					customProductPageKeywordsSkipReason = fmt.Sprintf("Custom product page keyword checks were skipped because App Store Connect custom product page data could not be read: %v", fetchErr)
+				}
+				return nil
+			}
+			customProductPageLocalizations = fetched
+			return nil
+		},
 	); err != nil {
 		return validation.Report{}, err
 	}
@@ -319,6 +343,9 @@ func BuildReadinessReport(ctx context.Context, opts ReadinessOptions) (validatio
 		Copyright:                   versionData.response.Data.Attributes.Copyright,
 		HasPaidAppPrice:             hasPaidAppPrice,
 		AppPricingKnown:             appPricingKnown,
+
+		CustomProductPageLocalizations:      customProductPageLocalizations,
+		CustomProductPageKeywordsSkipReason: customProductPageKeywordsSkipReason,
 	}, opts.Strict)
 	if opts.CheckURLs {
 		targets := validateURLTargets(versionLocalizations, appInfoLocalizations)
