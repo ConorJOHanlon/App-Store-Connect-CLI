@@ -95,6 +95,42 @@ func TestLocalizationsViewRequestsLocalizationAndPrintsEnvelope(t *testing.T) {
 	}
 }
 
+func TestLocalizationsViewMarkdownShowsRequestedFields(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"data":{"type":"appStoreVersionLocalizations","id":"loc-1","attributes":{"description":"Long text","supportUrl":null}}}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+		}, nil
+	})
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, _ := captureOutput(t, func() {
+		if err := root.Parse([]string{"localizations", "view", "--id", "loc-1", "--fields", "description,supportUrl", "--output", "markdown"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	for _, row := range []string{"| id          | loc-1     |", "| description | Long text |", "| supportUrl  |           |"} {
+		if !strings.Contains(stdout, row) {
+			t.Fatalf("expected markdown row %q, got %q", row, stdout)
+		}
+	}
+}
+
 func TestLocalizationsViewRejectsInvalidFlags(t *testing.T) {
 	tests := []struct {
 		name       string

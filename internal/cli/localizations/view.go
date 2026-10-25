@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -83,21 +84,50 @@ Examples:
 				return fmt.Errorf("localizations view: %w", err)
 			}
 
-			render := func(format string) func() error {
+			render := func(write func([]string, [][]string) error) func() error {
 				return func() error {
-					var typed any = &asc.AppStoreVersionLocalizationResponse{}
-					if normalizedType == shared.LocalizationTypeAppInfo {
-						typed = &asc.AppInfoLocalizationResponse{}
+					headers, rows, err := localizationViewRows(response)
+					if err != nil {
+						return fmt.Errorf("localizations view: %w", err)
 					}
-					if err := json.Unmarshal(response, typed); err != nil {
-						return fmt.Errorf("localizations view: failed to parse response: %w", err)
-					}
-					return shared.PrintOutput(typed, format, false)
+					return write(headers, rows)
 				}
 			}
-			return shared.PrintOutputWithRenderers(json.RawMessage(response), *output.Output, *output.Pretty, render("table"), render("markdown"))
+			return shared.PrintOutputWithRenderers(json.RawMessage(response), *output.Output, *output.Pretty, render(asc.WriteTable), render(asc.WriteMarkdown))
 		},
 	}
+}
+
+// localizationViewRows lists the ID and every attribute Apple returned, so
+// table and markdown output show exactly the fields a --fields request asked for.
+func localizationViewRows(response []byte) ([]string, [][]string, error) {
+	var envelope struct {
+		Data struct {
+			ID         string                     `json:"id"`
+			Attributes map[string]json.RawMessage `json:"attributes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(response, &envelope); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+	keys := make([]string, 0, len(envelope.Data.Attributes))
+	for key := range envelope.Data.Attributes {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	rows := [][]string{{"id", envelope.Data.ID}}
+	for _, key := range keys {
+		raw := envelope.Data.Attributes[key]
+		value := string(raw)
+		var text string
+		if json.Unmarshal(raw, &text) == nil {
+			value = text
+		} else if string(raw) == "null" {
+			value = ""
+		}
+		rows = append(rows, []string{key, value})
+	}
+	return []string{"Field", "Value"}, rows, nil
 }
 
 // versionLocalizationFieldList reports the fields[appStoreVersionLocalizations]
