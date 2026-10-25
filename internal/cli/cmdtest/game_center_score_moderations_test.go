@@ -152,3 +152,19 @@ func TestGameCenterScoreModerationNextAndErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestGameCenterScoreModerationsUnservedEndpoint(t *testing.T) {
+	setupAuth(t)
+	installDefaultTransport(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{"errors":[{"status":"404","code":"PATH_ERROR","title":"The URL path is not valid","detail":"The resource 'v2/gameCenterLeaderboards' does not exist"}]}`
+		return &http.Response{StatusCode: 404, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	}))
+	root := RootCommand("test")
+	var runErr error
+	_, _ = captureOutput(t, func() {
+		runErr = root.ParseAndRun(context.Background(), []string{"game-center", "leaderboards", "v2", "score-moderations", "list", "--leaderboard-id", "lb-45"})
+	})
+	if runErr == nil || !strings.Contains(runErr.Error(), "Manage Scores and Players") || !strings.Contains(runErr.Error(), "The URL path is not valid") {
+		t.Fatalf("err=%v", runErr)
+	}
+}
