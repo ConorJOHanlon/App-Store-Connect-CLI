@@ -34,6 +34,16 @@ func TestTestFlightGroupReadsSendRequest(t *testing.T) {
 				"fields[betaTesters]": {"email,state"},
 			},
 		},
+		{
+			name:     "app testers with fields keep included relationships",
+			args:     []string{"testflight", "testers", "list", "--app", "app-1", "--fields", "email", "--include", "betaGroups"},
+			wantPath: "/v1/betaTesters",
+			wantQuery: url.Values{
+				"fields[betaTesters]": {"email,betaGroups"},
+				"filter[apps]":        {"app-1"},
+				"include":             {"betaGroups"},
+			},
+		},
 	}
 
 	for _, test := range tests {
