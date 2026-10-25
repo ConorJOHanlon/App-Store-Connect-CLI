@@ -325,3 +325,19 @@ func (a AppStoreVersionPhasedReleaseAttributes) MarshalJSON() ([]byte, error) {
 	type alias AppStoreVersionPhasedReleaseAttributes
 	return a.api.marshal(alias(a))
 }
+
+func (a *AppStoreVersionAttributes) UnmarshalJSON(data []byte) error {
+	type alias AppStoreVersionAttributes
+	decoded, api, err := unmarshalAPIAttributes[alias](data)
+	if err != nil {
+		return err
+	}
+	*a = AppStoreVersionAttributes(decoded)
+	a.api = api
+	return nil
+}
+
+func (a AppStoreVersionAttributes) MarshalJSON() ([]byte, error) {
+	type alias AppStoreVersionAttributes
+	return a.api.marshal(alias(a))
+}

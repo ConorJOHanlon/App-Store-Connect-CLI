@@ -9,7 +9,7 @@ import (
 
 func TestPrintTable_AppStoreVersionPhasedReleaseIncludesProgress(t *testing.T) {
 	resp := &AppStoreVersionPhasedReleaseResponse{
-		Data: Resource[AppStoreVersionPhasedReleaseAttributes]{
+		Data: &Resource[AppStoreVersionPhasedReleaseAttributes]{
 			ID: "phase-1",
 			Attributes: AppStoreVersionPhasedReleaseAttributes{
 				PhasedReleaseState: PhasedReleaseStateActive,

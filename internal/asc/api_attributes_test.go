@@ -29,6 +29,7 @@ func TestAPIAttributesRoundTripAppleObject(t *testing.T) {
 		{"in-app purchase", &InAppPurchaseV2Attributes{}, `{"name":"Coins","contentHosting":false,"reviewNote":null,"familySharable":false,"unmodeled":1}`},
 		{"beta app review detail", &BetaAppReviewDetailAttributes{}, `{"demoAccountRequired":false,"demoAccountName":null,"demoAccountPassword":null,"notes":null,"unmodeled":1}`},
 		{"beta app localization", &BetaAppLocalizationAttributes{}, `{"locale":"en-US","description":null,"marketingUrl":null,"privacyPolicyUrl":null,"unmodeled":1}`},
+		{"app store version", &AppStoreVersionAttributes{}, `{"versionString":"2.5.2","appStoreState":"READY_FOR_SALE","reviewType":"APP_STORE","usesIdfa":null,"earliestReleaseDate":null,"downloadable":false,"unmodeled":1}`},
 		{"phased release", &AppStoreVersionPhasedReleaseAttributes{}, `{"phasedReleaseState":"COMPLETE","totalPauseDuration":0,"currentDayNumber":null,"unmodeled":1}`},
 		{"build", &BuildAttributes{}, `{"version":"42","uploadedDate":"2026-10-01T00:00:00Z","expired":false,"lsMinimumSystemVersion":null,"usesNonExemptEncryption":null,"unmodeled":1}`},
 		{"beta tester", &BetaTesterAttributes{}, `{"firstName":"Ada","lastName":null,"email":null,"appDevices":[],"unmodeled":1}`},
