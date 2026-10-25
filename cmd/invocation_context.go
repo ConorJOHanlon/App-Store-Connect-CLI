@@ -172,6 +172,13 @@ func printConciseUnknownFlag(root *ffcli.Command, analysis invocationAnalysis, c
 	if printMetadataValidateFlagRecovery(flagName, commandName, analysis, args) {
 		return
 	}
+	// A recovery path that later became a real command, such as
+	// `testflight groups builds list`, still recovers when every flag belongs
+	// to the old destination.
+	if _, suggested, ok := commonCommandPathRecovery(root, invocationAnalysis{shape: telemetry.InvocationShapeUnknownChild}, args); ok {
+		fmt.Fprintf(os.Stderr, "Try:\n  %s\nFor help:\n  %s --help\n", suggested, commandName)
+		return
+	}
 	if name, ok := flagLookupName(flagName); ok && root != nil && root.FlagSet != nil && root.FlagSet.Lookup(name) != nil {
 		fmt.Fprintf(
 			os.Stderr,

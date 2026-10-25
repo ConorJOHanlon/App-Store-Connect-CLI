@@ -82,6 +82,7 @@ type betaGroupsQuery struct {
 
 type betaGroupBuildsQuery struct {
 	listQuery
+	fields []string
 }
 
 type betaGroupTestersQuery struct {
@@ -235,6 +236,7 @@ func buildBetaGroupsQuery(query *betaGroupsQuery) string {
 
 func buildBetaGroupBuildsQuery(query *betaGroupBuildsQuery) string {
 	values := url.Values{}
+	addCSV(values, "fields[builds]", query.fields)
 	addLimit(values, query.limit)
 	return values.Encode()
 }
@@ -746,6 +748,13 @@ func WithBetaGroupBuildsNextURL(next string) BetaGroupBuildsOption {
 		if strings.TrimSpace(next) != "" {
 			q.nextURL = strings.TrimSpace(next)
 		}
+	}
+}
+
+// WithBetaGroupBuildsFields sets fields[builds] for a beta group's builds.
+func WithBetaGroupBuildsFields(fields []string) BetaGroupBuildsOption {
+	return func(q *betaGroupBuildsQuery) {
+		q.fields = normalizeList(fields)
 	}
 }
 
