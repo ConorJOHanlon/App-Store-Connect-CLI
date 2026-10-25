@@ -85,8 +85,7 @@ type validateFixture struct {
 	customProductPages         string
 	customPageVersionsByPage   map[string]string
 	customPageLocsByVersion    map[string]string
-	customPageKeywordsByLoc    map[string]string
-	customPageKeywordStatus    map[string]int
+	customPageLocsStatus       map[string]int
 	requestObserver            func(*http.Request)
 }
 
@@ -292,15 +291,10 @@ func newValidateTestClient(t *testing.T, fixture validateFixture) *asc.Client {
 			}
 		case strings.HasPrefix(path, "/v1/appCustomProductPageVersions/") && strings.HasSuffix(path, "/appCustomProductPageLocalizations"):
 			versionID := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/appCustomProductPageVersions/"), "/appCustomProductPageLocalizations")
-			if body, ok := fixture.customPageLocsByVersion[versionID]; ok {
-				return jsonResponse(http.StatusOK, body)
-			}
-		case strings.HasPrefix(path, "/v1/appCustomProductPageLocalizations/") && strings.HasSuffix(path, "/searchKeywords"):
-			localizationID := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/appCustomProductPageLocalizations/"), "/searchKeywords")
-			if status, ok := fixture.customPageKeywordStatus[localizationID]; ok {
+			if status, ok := fixture.customPageLocsStatus[versionID]; ok {
 				return jsonResponse(status, apiErrorJSONForStatus(status))
 			}
-			if body, ok := fixture.customPageKeywordsByLoc[localizationID]; ok {
+			if body, ok := fixture.customPageLocsByVersion[versionID]; ok {
 				return jsonResponse(http.StatusOK, body)
 			}
 		}
@@ -593,35 +587,47 @@ func TestValidateWarnsCopyrightWithoutLeadingAcquisitionYear(t *testing.T) {
 }
 
 func TestValidateWarnsWhenCustomProductPageKeywordsAreMissingFromVersionKeywords(t *testing.T) {
-	const localizationWithoutKeywords = `{"type":"appCustomProductPageLocalizations","id":"cpl-1","attributes":{"locale":"en-US"}}`
+	const missingKeywordLocalization = `{"type":"appCustomProductPageLocalizations","id":"cpl-1","attributes":{"locale":"en-US"},"relationships":{"searchKeywords":{"meta":{"paging":{"total":2,"limit":50}},"data":[{"type":"appKeywords","id":"music"},{"type":"appKeywords","id":"theory"}]}}}`
 	tests := []struct {
 		name           string
+		platform       string
 		localization   string
-		pageKeywords   string
-		keywordsStatus int
+		locsStatus     int
 		wantMissing    []string
-		wantUnverified bool
+		wantUnverified string
 	}{
 		{
-			name:         "included page keyword missing from version keywords",
-			localization: `{"type":"appCustomProductPageLocalizations","id":"cpl-1","attributes":{"locale":"en-US"},"relationships":{"searchKeywords":{"meta":{"paging":{"total":2,"limit":50}},"data":[{"type":"appKeywords","id":"music"},{"type":"appKeywords","id":"theory"}]}}}`,
+			name:         "included page keyword missing from iOS version keywords",
+			platform:     "IOS",
+			localization: missingKeywordLocalization,
 			wantMissing:  []string{"theory"},
 		},
 		{
-			name:         "fetched page keywords covered by version keywords",
-			localization: localizationWithoutKeywords,
-			pageKeywords: `{"data":[{"type":"appKeywords","id":"music"},{"type":"appKeywords","id":"ear training"},{"type":"appKeywords","id":"Tone"}]}`,
+			name:           "macOS version skips page keywords",
+			platform:       "MAC_OS",
+			localization:   missingKeywordLocalization,
+			wantUnverified: "MAC_OS",
+		},
+		{
+			name:         "included page keywords covered by version keywords",
+			localization: `{"type":"appCustomProductPageLocalizations","id":"cpl-1","attributes":{"locale":"en-US"},"relationships":{"searchKeywords":{"meta":{"paging":{"total":3,"limit":50}},"data":[{"type":"appKeywords","id":"music"},{"type":"appKeywords","id":"ear training"},{"type":"appKeywords","id":"Tone"}]}}}`,
+		},
+		{
+			name:           "truncated included page keywords report unverified",
+			localization:   `{"type":"appCustomProductPageLocalizations","id":"cpl-1","attributes":{"locale":"en-US"},"relationships":{"searchKeywords":{"meta":{"paging":{"total":3,"limit":50}},"data":[{"type":"appKeywords","id":"music"},{"type":"appKeywords","id":"theory"}]}}}`,
+			wantUnverified: "reports 3 search keywords",
 		},
 		{
 			name:           "nested not found reports unverified",
-			localization:   localizationWithoutKeywords,
-			wantUnverified: true,
+			localization:   missingKeywordLocalization,
+			locsStatus:     http.StatusNotFound,
+			wantUnverified: "could not be read",
 		},
 		{
 			name:           "nested bad request reports unverified",
-			localization:   localizationWithoutKeywords,
-			keywordsStatus: http.StatusBadRequest,
-			wantUnverified: true,
+			localization:   missingKeywordLocalization,
+			locsStatus:     http.StatusBadRequest,
+			wantUnverified: "could not be read",
 		},
 	}
 
@@ -633,29 +639,31 @@ func TestValidateWarnsWhenCustomProductPageKeywordsAreMissingFromVersionKeywords
 			fixture.customPageVersionsByPage = map[string]string{
 				"page-1": `{"data":[{"type":"appCustomProductPageVersions","id":"cpv-old","attributes":{"state":"REPLACED_WITH_NEW_VERSION"}},{"type":"appCustomProductPageVersions","id":"cpv-1","attributes":{"state":"APPROVED"}}]}`,
 			}
+			if test.platform != "" {
+				fixture.version = strings.Replace(fixture.version, `"platform":"IOS"`, `"platform":"`+test.platform+`"`, 1)
+			}
 			fixture.customPageLocsByVersion = map[string]string{
-				"cpv-old": `{"data":[{"type":"appCustomProductPageLocalizations","id":"cpl-old","attributes":{"locale":"en-US"}}]}`,
+				"cpv-old": `{"data":[{"type":"appCustomProductPageLocalizations","id":"cpl-old","attributes":{"locale":"en-US"},"relationships":{"searchKeywords":{"meta":{"paging":{"total":1,"limit":50}},"data":[{"type":"appKeywords","id":"retired"}]}}}]}`,
 				"cpv-1":   `{"data":[` + test.localization + `]}`,
 			}
-			fixture.customPageKeywordsByLoc = map[string]string{
-				"cpl-old": `{"data":[{"type":"appKeywords","id":"retired"}]}`,
-			}
-			if test.pageKeywords != "" {
-				fixture.customPageKeywordsByLoc["cpl-1"] = test.pageKeywords
-			}
-			if test.keywordsStatus != 0 {
-				fixture.customPageKeywordStatus = map[string]int{"cpl-1": test.keywordsStatus}
+			if test.locsStatus != 0 {
+				fixture.customPageLocsStatus = map[string]int{"cpv-1": test.locsStatus}
 			}
 
-			report, err := runValidateReport(t, fixture)
-			if err != nil {
-				t.Fatalf("expected custom product page keyword checks to be advisory, got %v", err)
+			// A macOS fixture has unrelated blocking checks, so assert only that
+			// the custom product page checks stay advisory.
+			report, _ := runValidateReport(t, fixture)
+			unverified := ""
+			for _, check := range report.Checks {
+				if strings.HasPrefix(check.ID, "custom_product_pages.") && check.Severity == validation.SeverityError {
+					t.Fatalf("expected custom product page checks to be advisory, got %+v", check)
+				}
+				if check.ID == "custom_product_pages.keywords.unverified" {
+					unverified = check.Remediation
+				}
 			}
-			if report.Summary.Blocking != 0 {
-				t.Fatalf("expected no blocking issues, got %+v", report.Summary)
-			}
-			if got := hasCheckWithID(report.Checks, "custom_product_pages.keywords.unverified"); got != test.wantUnverified {
-				t.Fatalf("unverified check present = %t, want %t; checks=%+v", got, test.wantUnverified, report.Checks)
+			if (unverified != "") != (test.wantUnverified != "") || !strings.Contains(unverified, test.wantUnverified) {
+				t.Fatalf("unverified remediation = %q, want it to contain %q; checks=%+v", unverified, test.wantUnverified, report.Checks)
 			}
 
 			var checks []validation.CheckResult

@@ -715,25 +715,12 @@ func (c *Client) DeleteAppCustomProductPageLocalization(ctx context.Context, loc
 }
 
 // GetAppCustomProductPageLocalizationSearchKeywords retrieves search keywords for a localization.
-func (c *Client) GetAppCustomProductPageLocalizationSearchKeywords(ctx context.Context, localizationID string, opts ...AppSearchKeywordsOption) (*AppKeywordsResponse, error) {
-	query := &appSearchKeywordsQuery{}
-	for _, opt := range opts {
-		opt(query)
-	}
-
+func (c *Client) GetAppCustomProductPageLocalizationSearchKeywords(ctx context.Context, localizationID string) (*AppKeywordsResponse, error) {
 	localizationID = strings.TrimSpace(localizationID)
-	if query.nextURL == "" && localizationID == "" {
+	if localizationID == "" {
 		return nil, fmt.Errorf("localizationID is required")
 	}
 	path := fmt.Sprintf("/v1/appCustomProductPageLocalizations/%s/searchKeywords", localizationID)
-	if query.nextURL != "" {
-		if err := validateNextURL(query.nextURL); err != nil {
-			return nil, fmt.Errorf("searchKeywords: %w", err)
-		}
-		path = query.nextURL
-	} else if queryString := buildAppSearchKeywordsQuery(query); queryString != "" {
-		path += "?" + queryString
-	}
 	data, err := c.do(ctx, "GET", path, nil)
 	if err != nil {
 		return nil, err
