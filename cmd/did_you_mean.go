@@ -241,7 +241,6 @@ var unknownChildSynonyms = map[string]map[string][]string{
 		"beta-groups": {"asc testflight groups list --app APP_ID", "asc testflight groups create --app APP_ID --name NAME"},
 	},
 	"asc testflight groups": {
-		"builds":       {"asc builds add-groups --build-id BUILD_ID --group GROUP_ID", "asc testflight groups list --build-id BUILD_ID"},
 		"add":          {"asc testflight groups create --app APP_ID --name NAME", "asc testflight groups add-testers --group GROUP_ID --email EMAIL"},
 		"create-group": {"asc testflight groups create --app APP_ID --name NAME"},
 		"new":          {"asc testflight groups create --app APP_ID --name NAME"},
