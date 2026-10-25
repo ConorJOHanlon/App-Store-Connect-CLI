@@ -98,8 +98,9 @@ func betaGroupReadListCommand(config betaGroupReadConfig) *ffcli.Command {
 		ShortHelp:  "List " + config.resource + " in a beta group.",
 		LongHelp: `List ` + config.resource + ` in a beta group by group ID; no --app is needed.
 
---group-id and --fields cannot be combined with --next: a links.next URL
-already carries the query it was produced from.
+--group-id, --fields, and --limit cannot be combined with --next: a links.next
+URL already carries the query it was produced from. With --paginate, --limit
+sets the page size (default 200).
 
 Examples:
   asc testflight ` + command + ` --group-id "GROUP_ID"
@@ -118,7 +119,7 @@ Examples:
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return shared.UsageErrorfCtx(ctx, "%s: %v", errPrefix, err)
 			}
-			if err := shared.RejectNextFlagConflicts(fs, *next, errPrefix, "group-id", "fields"); err != nil {
+			if err := shared.RejectNextFlagConflicts(fs, *next, errPrefix, "group-id", "fields", "limit"); err != nil {
 				return err
 			}
 			fieldValues, err := shared.NormalizeSelection(*fields, config.fieldValues, "--fields")
@@ -145,10 +146,12 @@ Examples:
 				if len(fieldValues) > 0 {
 					query.Set("fields["+config.apiResource+"]", strings.Join(fieldValues, ","))
 				}
-				if *paginate {
-					query.Set("limit", "200")
-				} else if *limit > 0 {
-					query.Set("limit", strconv.Itoa(*limit))
+				pageLimit := *limit
+				if *paginate && pageLimit == 0 {
+					pageLimit = 200
+				}
+				if pageLimit > 0 {
+					query.Set("limit", strconv.Itoa(pageLimit))
 				}
 				if encoded := query.Encode(); encoded != "" {
 					target += "?" + encoded

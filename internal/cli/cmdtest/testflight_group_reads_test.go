@@ -28,6 +28,12 @@ func TestTestFlightGroupReadsSendRequest(t *testing.T) {
 			},
 		},
 		{
+			name:      "group testers paginate keep the page size",
+			args:      []string{"testflight", "groups", "testers", "list", "--group-id", "group-1", "--paginate", "--limit", "3"},
+			wantPath:  "/v1/betaGroups/group-1/betaTesters",
+			wantQuery: url.Values{"limit": {"3"}},
+		},
+		{
 			name:      "group builds print Apple's sparse envelope unmodified",
 			args:      []string{"testflight", "groups", "builds", "list", "--group-id", "group-1", "--fields", "version", "--limit", "1"},
 			wantPath:  "/v1/betaGroups/group-1/builds",
@@ -107,6 +113,11 @@ func TestTestFlightGroupReadsRejectUsage(t *testing.T) {
 			name:    "group builds fields with next",
 			args:    []string{"testflight", "groups", "builds", "list", "--next", nextURL, "--fields", "version"},
 			wantErr: "testflight groups builds list: --next cannot be combined with --fields",
+		},
+		{
+			name:    "group builds limit with next",
+			args:    []string{"testflight", "groups", "builds", "list", "--next", nextURL, "--limit", "5"},
+			wantErr: "--next cannot be combined with --limit",
 		},
 		{
 			name:    "group builds unknown field",
