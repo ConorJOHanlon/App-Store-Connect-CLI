@@ -12,6 +12,7 @@ func registerAllOutputRenderers() {
 	registerRows(creativePlacementCreateResultRows)
 	registerRows(creativePlacementDeleteResultRows)
 	registerRows(creativePlacementReorderResultRows)
+	registerRows(appScreenshotReorderResultRows)
 	registerRows(creativePlacementSwapResultRows)
 	registerRows(creativePlacementBulkDeleteResultRows)
 	registerRows(notarizationStapleResultRows)
