@@ -62,17 +62,9 @@ func fetchCustomProductPageKeywords(ctx context.Context, client *asc.Client, app
 						LocalizationID: loc.ID,
 						Locale:         loc.Attributes.Locale,
 					}
-					keywords, complete := includedSearchKeywords(loc.Relationships)
-					if !complete {
-						fetched, err := fetchAllReadinessPages(taskCtx, func(requestCtx context.Context, nextURL string) (*asc.AppKeywordsResponse, error) {
-							return client.GetAppCustomProductPageLocalizationSearchKeywords(requestCtx, loc.ID, asc.WithAppSearchKeywordsLimit(200), asc.WithAppSearchKeywordsNextURL(nextURL))
-						})
-						if err != nil {
-							return err
-						}
-						for _, keyword := range fetched {
-							keywords = append(keywords, keyword.ID)
-						}
+					keywords, err := includedSearchKeywords(loc.Relationships)
+					if err != nil {
+						return fmt.Errorf("custom product page localization %q: %w", loc.ID, err)
 					}
 					entry.SearchKeywords = keywords
 					mu.Lock()
@@ -100,9 +92,11 @@ func fetchCustomProductPageKeywords(ctx context.Context, client *asc.Client, app
 }
 
 // includedSearchKeywords reads the keywords included in a localization's
-// searchKeywords relationship. complete is false when the relationship is
-// missing or truncated, so the caller must fetch the keywords directly.
-func includedSearchKeywords(relationships json.RawMessage) (keywords []string, complete bool) {
+// searchKeywords relationship. Apple caps each locale's keywords at 100 bytes
+// of comma-separated terms longer than two characters, so a page cannot hold
+// more keywords than limit[searchKeywords] returns; an incomplete list is
+// reported as an error instead of fetched again.
+func includedSearchKeywords(relationships json.RawMessage) ([]string, error) {
 	var parsed struct {
 		SearchKeywords *struct {
 			Data []asc.RelationshipData `json:"data"`
@@ -114,17 +108,17 @@ func includedSearchKeywords(relationships json.RawMessage) (keywords []string, c
 		} `json:"searchKeywords"`
 	}
 	if len(relationships) == 0 || json.Unmarshal(relationships, &parsed) != nil || parsed.SearchKeywords == nil {
-		return nil, false
+		return nil, fmt.Errorf("search keywords were not included in the response")
 	}
 	related := parsed.SearchKeywords
-	total := related.Meta.Paging.Total
-	if total == nil || *total > len(related.Data) {
-		return nil, false
+	if total := related.Meta.Paging.Total; total != nil && *total > len(related.Data) {
+		return nil, fmt.Errorf("the response reports %d search keywords but includes %d", *total, len(related.Data))
 	}
+	keywords := make([]string, 0, len(related.Data))
 	for _, keyword := range related.Data {
 		keywords = append(keywords, keyword.ID)
 	}
-	return keywords, true
+	return keywords, nil
 }
 
 // fetchAllReadinessPages fetches every page of a list endpoint through the
