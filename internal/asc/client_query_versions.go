@@ -117,6 +117,7 @@ type appStoreVersionLocalizationPreviewSetsQuery struct {
 
 type appStoreVersionLocalizationScreenshotSetsQuery struct {
 	listQuery
+	includeMedia   bool
 	requestContext RequestContextFunc
 }
 
@@ -359,6 +360,9 @@ func buildAppStoreVersionLocalizationPreviewSetsQuery(query *appStoreVersionLoca
 func buildAppStoreVersionLocalizationScreenshotSetsQuery(query *appStoreVersionLocalizationScreenshotSetsQuery) string {
 	values := url.Values{}
 	addLimit(values, query.limit)
+	if query.includeMedia {
+		addIncludedSetMedia(values, "appScreenshots")
+	}
 	return values.Encode()
 }
 
@@ -1192,6 +1196,13 @@ func WithAppStoreVersionLocalizationScreenshotSetsLimit(limit int) AppStoreVersi
 		if limit > 0 {
 			q.limit = limit
 		}
+	}
+}
+
+// WithAppStoreVersionLocalizationScreenshotSetsIncludeScreenshots includes each set's screenshots.
+func WithAppStoreVersionLocalizationScreenshotSetsIncludeScreenshots() AppStoreVersionLocalizationScreenshotSetsOption {
+	return func(q *appStoreVersionLocalizationScreenshotSetsQuery) {
+		q.includeMedia = true
 	}
 }
 
