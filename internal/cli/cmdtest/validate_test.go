@@ -82,6 +82,10 @@ type validateFixture struct {
 	subscriptionGroupsStatus   int
 	iaps                       string
 	iapsStatus                 int
+	customProductPages         string
+	customPageVersionsByPage   map[string]string
+	customPageLocsByVersion    map[string]string
+	customPageKeywordsByLoc    map[string]string
 	requestObserver            func(*http.Request)
 }
 
@@ -275,6 +279,26 @@ func newValidateTestClient(t *testing.T, fixture validateFixture) *asc.Client {
 				return jsonResponse(http.StatusOK, fixture.iaps)
 			}
 			return jsonResponse(http.StatusOK, `{"data":[]}`)
+		case path == "/v1/apps/app-1/appCustomProductPages":
+			if fixture.customProductPages != "" {
+				return jsonResponse(http.StatusOK, fixture.customProductPages)
+			}
+			return jsonResponse(http.StatusOK, `{"data":[]}`)
+		case strings.HasPrefix(path, "/v1/appCustomProductPages/") && strings.HasSuffix(path, "/appCustomProductPageVersions"):
+			pageID := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/appCustomProductPages/"), "/appCustomProductPageVersions")
+			if body, ok := fixture.customPageVersionsByPage[pageID]; ok {
+				return jsonResponse(http.StatusOK, body)
+			}
+		case strings.HasPrefix(path, "/v1/appCustomProductPageVersions/") && strings.HasSuffix(path, "/appCustomProductPageLocalizations"):
+			versionID := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/appCustomProductPageVersions/"), "/appCustomProductPageLocalizations")
+			if body, ok := fixture.customPageLocsByVersion[versionID]; ok {
+				return jsonResponse(http.StatusOK, body)
+			}
+		case strings.HasPrefix(path, "/v1/appCustomProductPageLocalizations/") && strings.HasSuffix(path, "/searchKeywords"):
+			localizationID := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/appCustomProductPageLocalizations/"), "/searchKeywords")
+			if body, ok := fixture.customPageKeywordsByLoc[localizationID]; ok {
+				return jsonResponse(http.StatusOK, body)
+			}
 		}
 
 		return jsonResponse(http.StatusNotFound, `{"errors":[{"status":404}]}`)
@@ -561,6 +585,67 @@ func TestValidateWarnsCopyrightWithoutLeadingAcquisitionYear(t *testing.T) {
 	check := matches[0]
 	if check.Severity != validation.SeverityWarning || check.Field != "copyright" || check.ResourceType != "appStoreVersion" {
 		t.Fatalf("unexpected copyright-year check: %+v", check)
+	}
+}
+
+func TestValidateWarnsWhenCustomProductPageKeywordsAreMissingFromVersionKeywords(t *testing.T) {
+	tests := []struct {
+		name         string
+		pageKeywords string
+		wantMissing  []string
+	}{
+		{
+			name:         "page keyword missing from version keywords",
+			pageKeywords: `{"data":[{"type":"appKeywords","id":"music"},{"type":"appKeywords","id":"theory"}]}`,
+			wantMissing:  []string{"theory"},
+		},
+		{
+			name:         "page keywords covered by version keywords",
+			pageKeywords: `{"data":[{"type":"appKeywords","id":"music"},{"type":"appKeywords","id":"ear training"},{"type":"appKeywords","id":"Tone"}]}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := validValidateFixture()
+			fixture.versionLocs = strings.Replace(fixture.versionLocs, `"keywords":"keyword"`, `"keywords":"Music, Ear Training ,tone"`, 1)
+			fixture.customProductPages = `{"data":[{"type":"appCustomProductPages","id":"page-1","attributes":{"name":"Musicians"}}]}`
+			fixture.customPageVersionsByPage = map[string]string{
+				"page-1": `{"data":[{"type":"appCustomProductPageVersions","id":"cpv-old","attributes":{"state":"REPLACED_WITH_NEW_VERSION"}},{"type":"appCustomProductPageVersions","id":"cpv-1","attributes":{"state":"APPROVED"}}]}`,
+			}
+			fixture.customPageLocsByVersion = map[string]string{
+				"cpv-old": `{"data":[{"type":"appCustomProductPageLocalizations","id":"cpl-old","attributes":{"locale":"en-US"}}]}`,
+				"cpv-1":   `{"data":[{"type":"appCustomProductPageLocalizations","id":"cpl-1","attributes":{"locale":"en-US"}}]}`,
+			}
+			fixture.customPageKeywordsByLoc = map[string]string{
+				"cpl-old": `{"data":[{"type":"appKeywords","id":"retired"}]}`,
+				"cpl-1":   test.pageKeywords,
+			}
+
+			report, err := runValidateReport(t, fixture)
+			if err != nil {
+				t.Fatalf("expected missing page keywords to be advisory, got %v", err)
+			}
+			if report.Summary.Blocking != 0 {
+				t.Fatalf("expected no blocking issues, got %+v", report.Summary)
+			}
+
+			var checks []validation.CheckResult
+			for _, check := range report.Checks {
+				if check.ID == "custom_product_pages.keywords.missing_from_version" {
+					checks = append(checks, check)
+				}
+			}
+			if len(checks) != len(test.wantMissing) {
+				t.Fatalf("expected %d missing page keyword warnings, got %+v", len(test.wantMissing), checks)
+			}
+			for i, check := range checks {
+				if check.Severity != validation.SeverityWarning || check.Locale != "en-US" || check.ResourceID != "cpl-1" ||
+					!strings.Contains(check.Message, `"Musicians"`) || !strings.Contains(check.Message, `"`+test.wantMissing[i]+`"`) {
+					t.Fatalf("unexpected custom product page keyword check: %+v", check)
+				}
+			}
+		})
 	}
 }
 
