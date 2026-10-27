@@ -56,6 +56,7 @@ func registerAllOutputRenderers() {
 	registerRows(webIAPTaxCategoryResetResultRows)
 	registerRows(webReviewReplyResultRows)
 	registerRows(webReviewDraftResultRows)
+	registerRows(webReviewSandboxEntitlementResultRows)
 	registerRows(webWebsitePushIDMutationRows)
 	registerRows(webAPIKeysListRows)
 	registerRows(webAPIKeyRevokeRows)
