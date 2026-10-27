@@ -238,6 +238,10 @@ func UploadScreenshotAssetsConcurrently(ctx context.Context, client *asc.Client,
 	slots, failed, _, cleanupErr := runScreenshotUploadPool(ctx, client, files, defaultScreenshotUploadConcurrency, func(ctx context.Context, filePath string) (asc.AssetUploadResultItem, screenshotPendingAsset, error) {
 		uploadCtx, cancel := uploadContext(ctx)
 		defer cancel()
+		// uploadContext may rebuild from an earlier parent, so carry the turn over.
+		if turn, ok := ctx.Value(screenshotReservationTurnKey{}).(screenshotReservationTurn); ok {
+			uploadCtx = context.WithValue(uploadCtx, screenshotReservationTurnKey{}, turn)
+		}
 		file, err := open(filePath)
 		if err != nil {
 			return asc.AssetUploadResultItem{}, screenshotPendingAsset{}, err

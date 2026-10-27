@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -206,10 +207,9 @@ func TestConcurrentScreenshotUploadReservesScreenshotsInFileOrder(t *testing.T) 
 			}
 			name := payload.Data.Attributes.FileName
 			// App Store Connect appends screenshots in creation order, so a slow first
-			// reservation must not let later files claim earlier positions. The sleep
-			// runs on the synctest clock.
+			// reservation must not let later files claim earlier positions.
 			if name == "01.png" {
-				time.Sleep(50 * time.Millisecond)
+				synctest.Wait()
 			}
 			mu.Lock()
 			created = append(created, name)
@@ -230,15 +230,30 @@ func TestConcurrentScreenshotUploadReservesScreenshotsInFileOrder(t *testing.T) 
 	})
 	t.Cleanup(func() { http.DefaultTransport = origTransport })
 
-	client := newAssetsUploadTestClient(t)
-	var err error
-	synctest.Test(t, func(*testing.T) {
-		_, err = uploadScreenshotsWithOrderStateWithOpenedFiles(withScreenshotUploadConcurrency(context.Background(), 4), client, "set", nil, files, sourceRoot, false, false, nil)
-	})
-	if err != nil {
-		t.Fatal(err)
+	uploads := map[string]func(context.Context, *asc.Client) error{
+		"upload": func(ctx context.Context, client *asc.Client) error {
+			_, err := uploadScreenshotsWithOrderStateWithOpenedFiles(withScreenshotUploadConcurrency(ctx, 4), client, "set", nil, files, sourceRoot, false, false, nil)
+			return err
+		},
+		// migrate rebuilds each upload context from a parent without the reservation turn.
+		"migrate": func(ctx context.Context, client *asc.Client) error {
+			_, _, err := UploadScreenshotAssetsConcurrently(ctx, client, "set", files, func(context.Context) (context.Context, context.CancelFunc) {
+				return context.WithCancel(context.Background())
+			}, func(string) (*os.File, error) { return nil, nil })
+			return err
+		},
 	}
-	if want := []string{"01.png", "02.png", "03.png", "04.png"}; !reflect.DeepEqual(created, want) {
-		t.Fatalf("creation order = %v, want %v", created, want)
+	for name, upload := range uploads {
+		t.Run(name, func(t *testing.T) {
+			created = nil
+			var err error
+			synctest.Test(t, func(t *testing.T) { err = upload(context.Background(), newAssetsUploadTestClient(t)) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := []string{"01.png", "02.png", "03.png", "04.png"}; !reflect.DeepEqual(created, want) {
+				t.Fatalf("creation order = %v, want %v", created, want)
+			}
+		})
 	}
 }
