@@ -987,6 +987,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/56/a6/e5/56a6e530-ded3-69de-d871-0d0252bd0610/AppIcon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg"
   },
   {
+    "app": "heypster",
+    "link": "https://apps.apple.com/us/app/heypster/id1571127299?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/a4/7c/2f/a47c2fcb-8caa-0242-27d4-4779e10b84a9/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Home Cameras",
     "link": "https://apps.apple.com/us/app/home-cameras/id6762038582?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/38/05/66/38056606-4649-101f-cdc3-a4ed626181dc/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
@@ -1414,6 +1419,11 @@
     "app": "MV Converter",
     "link": "https://apps.apple.com/us/app/mv-converter/id6471924175?mt=12&uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/cd/1c/2d/cd1c2d62-a786-8267-ed02-fc45155fa9ec/AppIcon-0-0-85-220-0-6-0-2x.png/512x512bb.png"
+  },
+  {
+    "app": "MVPlayer.app",
+    "link": "https://apps.apple.com/us/app/mvplayer-app/id6480077193?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/da/21/d2/da21d2a8-761b-00ce-8df0-12d439894fe4/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
   },
   {
     "app": "MyFooderPlan: AI Meal Planner",
