@@ -1,8 +1,8 @@
 # `asc web apps create --password` removed
 
-Removed in 6.0.0. `asc web apps create` no longer accepts `--password`. The
-flag was deprecated with a stderr warning before this release. Passing it now
-fails with usage exit code `2` before any web session lookup or app creation:
+Removed in 6.0.0. `asc web apps create` no longer accepts `--password`.
+Passing it now fails with usage exit code `2` before any web session lookup or
+app creation:
 
 ```text
 Error: `--password` was removed in 6.0.0; run `asc web auth login --apple-id EMAIL` once and rerun without it to reuse the cached web session, or set `ASC_WEB_PASSWORD` for unattended sign-in
