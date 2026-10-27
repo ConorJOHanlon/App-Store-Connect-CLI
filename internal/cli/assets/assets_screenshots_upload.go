@@ -525,7 +525,11 @@ func uploadScreenshotAssetFromFile(ctx context.Context, client *asc.Client, setI
 		return asc.AssetUploadResultItem{}, screenshotPendingAsset{}, err
 	}
 
+	if err := waitForScreenshotReservationTurn(ctx); err != nil {
+		return asc.AssetUploadResultItem{}, screenshotPendingAsset{}, err
+	}
 	created, err := client.CreateAppScreenshot(ctx, setID, info.Name(), info.Size())
+	releaseScreenshotReservationTurn(ctx)
 	if err != nil {
 		return asc.AssetUploadResultItem{}, screenshotPendingAsset{}, err
 	}
