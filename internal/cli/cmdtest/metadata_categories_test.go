@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 )
 
 // metadataCategoriesHTTP serves version and app-info resolution plus category
@@ -22,6 +24,8 @@ func metadataCategoriesHTTP(t *testing.T, remote map[string]string, storeOnPatch
 			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"appInfos","id":"appinfo-1","attributes":{"state":"PREPARE_FOR_SUBMISSION"}}]}`), nil
 		case req.URL.Path == "/v1/apps/app-1/appStoreVersions":
 			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"}}],"links":{"next":""}}`), nil
+		case req.URL.Path == "/v1/appInfos/appinfo-1" && req.Method == http.MethodGet:
+			return jsonHTTPResponse(http.StatusOK, `{"data":{"type":"appInfos","id":"appinfo-1"}}`), nil
 		case req.URL.Path == "/v1/appInfos/appinfo-1" && req.Method == http.MethodPatch:
 			var payload struct {
 				Data struct {
@@ -48,6 +52,9 @@ func metadataCategoriesHTTP(t *testing.T, remote map[string]string, storeOnPatch
 			name := strings.TrimPrefix(req.URL.Path, "/v1/appInfos/appinfo-1/relationships/")
 			if id := remote[name]; id != "" {
 				return jsonHTTPResponse(http.StatusOK, `{"data":{"type":"appCategories","id":"`+id+`"}}`), nil
+			}
+			if name == "secondaryCategory" {
+				return jsonHTTPResponse(http.StatusNotFound, `{"errors":[{"status":"404","code":"NOT_FOUND","title":"The specified resource does not exist"}]}`), nil
 			}
 			return jsonHTTPResponse(http.StatusOK, `{"data":null}`), nil
 		default:
@@ -126,6 +133,44 @@ func TestMetadataCategoriesPullPlanApproveApply(t *testing.T) {
 	}
 	if len(patches) != 1 || len(patches[0]) != 2 || patches[0]["primarySubcategoryOne"] != "GAMES_PUZZLE" || patches[0]["secondaryCategory"] != "ENTERTAINMENT" {
 		t.Fatalf("PATCH relationships = %v, want only the changed categories", patches)
+	}
+}
+
+func TestMetadataCategoriesPullPreservesFileWhenAppInfoIsMissing(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "categories.json")
+	original := `{"primaryCategory":"GAMES"}`
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	withMetadataReviewHTTP(t, func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.URL.Path == "/v1/apps/app-1/appStoreVersions":
+			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"}}],"links":{"next":""}}`), nil
+		case req.URL.Path == "/v1/appInfos/missing-app-info" || strings.HasPrefix(req.URL.Path, "/v1/appInfos/missing-app-info/relationships/"):
+			return jsonHTTPResponse(http.StatusNotFound, `{"errors":[{"status":"404","code":"NOT_FOUND","title":"The specified resource does not exist"}]}`), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+			return nil, nil
+		}
+	})
+
+	stdout, stderr, runErr := runMetadataReviewCommandRaw(t, []string{
+		"metadata", "pull", "--app", "app-1", "--app-info", "missing-app-info", "--version", "1.2.3",
+		"--dir", dir, "--include", "categories", "--force", "--output", "json",
+	})
+	if !asc.IsNotFound(runErr) || stdout != "" || !strings.Contains(runErr.Error(), "metadata pull: read categories:") {
+		t.Fatalf("expected category read error without success output, got err=%v stdout=%q stderr=%q", runErr, stdout, stderr)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != original {
+		t.Fatalf("failed pull changed categories from %q to %q", original, contents)
 	}
 }
 

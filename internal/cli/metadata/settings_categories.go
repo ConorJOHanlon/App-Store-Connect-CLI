@@ -75,11 +75,13 @@ var categoriesSettingScope = metadataSettingScope{
 
 func fetchAppInfoCategories(ctx context.Context, client *asc.Client, target metadataSettingTarget) (map[string]string, error) {
 	values := map[string]string{}
+	needsParentCheck := false
 	for _, field := range categoryFields {
 		read := categoryRelationshipReaders[field.name]
 		id, err := shared.RetryReadWithFreshTimeout(ctx, func(requestCtx context.Context) (string, error) {
 			id, err := read(requestCtx, client, target.appInfoID)
 			if asc.IsNotFound(err) {
+				needsParentCheck = true
 				return "", nil
 			}
 			return id, err
@@ -89,6 +91,14 @@ func fetchAppInfoCategories(ctx context.Context, client *asc.Client, target meta
 		}
 		if id = strings.TrimSpace(id); id != "" {
 			values[field.name] = id
+		}
+	}
+	if needsParentCheck {
+		_, err := shared.RetryReadWithFreshTimeout(ctx, func(requestCtx context.Context) (*asc.AppInfoResponse, error) {
+			return client.GetAppInfo(requestCtx, target.appInfoID)
+		})
+		if err != nil {
+			return nil, err
 		}
 	}
 	return values, nil
