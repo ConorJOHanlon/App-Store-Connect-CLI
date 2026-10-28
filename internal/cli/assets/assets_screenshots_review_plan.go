@@ -83,9 +83,9 @@ func AssetsScreenshotsPlanCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("plan", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
-	version := fs.String("version", "", "App Store version string")
+	version := fs.String("version", "", "App Store version ID or numeric version string")
 	versionID := shared.BindResourceIDFlag(fs, "version-id", "appStoreVersions", "App Store version ID")
-	platform := fs.String("platform", "", "Platform for --version lookups: IOS, MAC_OS, TV_OS, VISION_OS (defaults to IOS with --version)")
+	platform := fs.String("platform", "", "Platform: IOS, MAC_OS, TV_OS, VISION_OS (defaults to IOS for version strings; IDs use their actual platform)")
 	reviewOutputDir := fs.String("review-output-dir", defaultReviewOutputDir, "Directory containing review artifacts")
 	manifestPath := fs.String("manifest-path", "", "Optional manifest path (default: <review-output-dir>/manifest.json)")
 	approvalPath := fs.String("approval-path", "", "Optional approvals path (default: <review-output-dir>/approved.json)")
@@ -105,7 +105,7 @@ version localizations, and previews grouped upload intent per display type.
 Examples:
   asc screenshots plan --app "123456789" --version "1.2.3"
   asc screenshots plan --app "123456789" --version "1.2.3" --skip-existing
-  asc screenshots plan --app "123456789" --version-id "VERSION_ID" --replace`,
+  asc screenshots plan --app "123456789" --version "VERSION_ID" --replace`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -143,9 +143,9 @@ func AssetsScreenshotsApplyCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("apply", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
-	version := fs.String("version", "", "App Store version string")
+	version := fs.String("version", "", "App Store version ID or numeric version string")
 	versionID := shared.BindResourceIDFlag(fs, "version-id", "appStoreVersions", "App Store version ID")
-	platform := fs.String("platform", "", "Platform for --version lookups: IOS, MAC_OS, TV_OS, VISION_OS (defaults to IOS with --version)")
+	platform := fs.String("platform", "", "Platform: IOS, MAC_OS, TV_OS, VISION_OS (defaults to IOS for version strings; IDs use their actual platform)")
 	reviewOutputDir := fs.String("review-output-dir", defaultReviewOutputDir, "Directory containing review artifacts")
 	manifestPath := fs.String("manifest-path", "", "Optional manifest path (default: <review-output-dir>/manifest.json)")
 	approvalPath := fs.String("approval-path", "", "Optional approvals path (default: <review-output-dir>/approved.json)")
@@ -163,7 +163,7 @@ func AssetsScreenshotsApplyCommand() *ffcli.Command {
 Examples:
   asc screenshots apply --app "123456789" --version "1.2.3" --confirm
   asc screenshots apply --app "123456789" --version "1.2.3" --skip-existing --confirm
-  asc screenshots apply --app "123456789" --version-id "VERSION_ID" --replace --confirm`,
+  asc screenshots apply --app "123456789" --version "VERSION_ID" --replace --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -219,6 +219,11 @@ func executeScreenshotReviewPlan(ctx context.Context, opts screenshotReviewPlanO
 	if opts.SkipExisting && opts.Replace {
 		fmt.Fprintln(os.Stderr, "Error: --skip-existing and --replace are mutually exclusive")
 		return nil, flag.ErrHelp
+	}
+
+	versionValue, versionIDValue, err := normalizeScreenshotVersionSelector(versionValue, versionIDValue)
+	if err != nil {
+		return nil, shared.UsageError(err.Error())
 	}
 
 	normalizedPlatform, err := resolveAppScopedScreenshotPlatform(versionValue, opts.Platform)

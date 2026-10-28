@@ -193,6 +193,14 @@ func resolveScreenshotUploadExecutor(
 	return executeAppScreenshotUpload
 }
 
+func normalizeScreenshotVersionSelector(version, versionID string) (string, string, error) {
+	if version == "" || shared.IsAppStoreVersionString(version) {
+		return version, versionID, nil
+	}
+	id, err := shared.ResourceIDFromValue(version, "appStoreVersions")
+	return "", id, err
+}
+
 func resolveAppScopedScreenshotPlatform(version, platformValue string) (string, error) {
 	trimmedPlatform := strings.TrimSpace(platformValue)
 	if trimmedPlatform != "" {
@@ -302,9 +310,9 @@ func AssetsScreenshotsListCommand() *ffcli.Command {
 
 	localizationID := shared.BindResourceIDFlag(fs, "version-localization", "appStoreVersionLocalizations", "App Store version localization ID")
 	appID := fs.String("app", "", "App Store Connect app ID, bundle ID, or exact app name (or ASC_APP_ID env)")
-	version := fs.String("version", "", "App Store version string (requires --app)")
+	version := fs.String("version", "", "App Store version ID or numeric version string (strings require --app or ASC_APP_ID)")
 	versionID := shared.BindResourceIDFlag(fs, "version-id", "appStoreVersions", "App Store version ID")
-	platform := fs.String("platform", "", "Platform: IOS, MAC_OS, TV_OS, VISION_OS (defaults to IOS with --version; with --version-id requires --app or ASC_APP_ID)")
+	platform := fs.String("platform", "", "Platform: IOS, MAC_OS, TV_OS, VISION_OS (defaults to IOS with version strings; with version IDs requires --app or ASC_APP_ID)")
 	locale := fs.String("locale", "", "Localization locale (optional with --version or --version-id; omit to list every localization of the version)")
 	setID := shared.BindResourceIDFlag(fs, "set-id", "appScreenshotSets", "App screenshot set ID; prints Apple's appScreenshots response unmodified")
 	fields := fs.String("fields", "", "With --set-id: appScreenshots fields, comma-separated: "+strings.Join(screenshotSetListFields, ", "))
@@ -314,7 +322,7 @@ func AssetsScreenshotsListCommand() *ffcli.Command {
 
 	return &ffcli.Command{
 		Name:       "list",
-		ShortUsage: "asc screenshots list (--version-localization \"VERSION_LOCALIZATION_ID\" | --version-id \"VERSION_ID\" [--locale \"LOCALE\"] | --app \"APP_ID\" --version \"VERSION\" [--locale \"LOCALE\"] | --set-id \"SET_ID\" [--fields FIELDS] [--limit N] [--paginate])",
+		ShortUsage: "asc screenshots list (--version-localization \"VERSION_LOCALIZATION_ID\" | --version \"VERSION_ID\" [--locale \"LOCALE\"] | --app \"APP_ID\" --version \"VERSION\" [--locale \"LOCALE\"] | --set-id \"SET_ID\" [--fields FIELDS] [--limit N] [--paginate])",
 		ShortHelp:  "List screenshots for a localization.",
 		LongHelp: `List screenshots for a localization.
 
@@ -336,7 +344,7 @@ unmodified, including assetDeliveryState warnings and uploadOperations.
 
 Examples:
   asc screenshots list --version-localization "VERSION_LOCALIZATION_ID"
-  asc screenshots list --version-id "VERSION_ID" --locale "en-US"
+  asc screenshots list --version "VERSION_ID" --locale "en-US"
   asc screenshots list --app "123456789" --version "1.2.3" --locale "en-US"
   asc screenshots list --app "123456789" --version "1.2.3"
   asc screenshots list --set-id "SET_ID" --fields "fileName,assetDeliveryState" --paginate`,
@@ -417,6 +425,11 @@ func executeScreenshotListCommand(ctx context.Context, opts screenshotListComman
 	if versionValue != "" && versionIDValue != "" {
 		fmt.Fprintln(os.Stderr, "Error: --version and --version-id are mutually exclusive")
 		return nil, flag.ErrHelp
+	}
+
+	versionValue, versionIDValue, err := normalizeScreenshotVersionSelector(versionValue, versionIDValue)
+	if err != nil {
+		return nil, shared.UsageError(err.Error())
 	}
 
 	if locID == "" {
@@ -713,9 +726,9 @@ func AssetsScreenshotsUploadCommand() *ffcli.Command {
 
 	localizationID := shared.BindResourceIDFlag(fs, "version-localization", "appStoreVersionLocalizations", "App Store version localization ID")
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
-	version := fs.String("version", "", "App Store version string for app-scoped fan-out uploads")
+	version := fs.String("version", "", "App Store version ID or numeric version string for app-scoped uploads")
 	versionID := shared.BindResourceIDFlag(fs, "version-id", "appStoreVersions", "App Store version ID for app-scoped fan-out uploads")
-	platform := fs.String("platform", "", "Platform for app-scoped fan-out uploads: IOS, MAC_OS, TV_OS, VISION_OS (default: IOS)")
+	platform := fs.String("platform", "", "Platform for app-scoped uploads: IOS, MAC_OS, TV_OS, VISION_OS (defaults to IOS for version strings; IDs use their actual platform)")
 	locale := fs.String("locale", "", "Upload one locale in app-scoped mode (requires --app with --version or --version-id); --path then points at that locale's screenshots")
 	path := fs.String("path", "", "Path to screenshot file or directory")
 	deviceType := fs.String("device-type", "", "Device type (e.g., IPHONE_65 or IPAD_PRO_3GEN_129)")
@@ -767,7 +780,7 @@ deletions without --confirm.
 Examples:
   asc screenshots upload --app "123456789" --version "1.2.3" --locale "en-US" --path "./screenshots/en-US" --device-type "IPHONE_65"
   asc screenshots upload --app "123456789" --version "1.2.3" --locale "en-US" --path "./screenshots/en-US" --device-type "IPHONE_65" --replace --confirm
-  asc screenshots upload --app "123456789" --version-id "VERSION_ID" --locale "de-DE" --path "./screenshots/de-DE" --device-type "IPHONE_65" --dry-run
+  asc screenshots upload --app "123456789" --version "VERSION_ID" --locale "de-DE" --path "./screenshots/de-DE" --device-type "IPHONE_65" --dry-run
   asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "./screenshots" --device-type "IPHONE_65"
   asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "./screenshots" --device-type "IPHONE_65" --skip-existing
   asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "./screenshots" --device-type "IPHONE_65" --replace --confirm
@@ -777,7 +790,7 @@ Examples:
   asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "./screenshots" --device-type "IPAD_PRO_3GEN_129"
   asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "./screenshots/en-US.png" --device-type "IPHONE_65"
   asc screenshots upload --app "123456789" --version "1.2.3" --path "./screenshots" --device-type "IPHONE_65"
-  asc screenshots upload --app "123456789" --version-id "VERSION_ID" --path "./screenshots/ipad" --device-type "IPAD_PRO_3GEN_129" --dry-run
+  asc screenshots upload --app "123456789" --version "VERSION_ID" --path "./screenshots/ipad" --device-type "IPAD_PRO_3GEN_129" --dry-run
   asc screenshots upload --resume ".asc/reports/screenshots-upload/failures-123.json"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -928,6 +941,11 @@ func executeScreenshotUploadCommand(ctx context.Context, opts screenshotUploadCo
 			return nil, flag.ErrHelp
 		}
 		appFlagValue = resolvedAppValue
+	}
+
+	versionValue, versionIDValue, err := normalizeScreenshotVersionSelector(versionValue, versionIDValue)
+	if err != nil {
+		return nil, shared.UsageError(err.Error())
 	}
 
 	pathValue := strings.TrimSpace(opts.Path)

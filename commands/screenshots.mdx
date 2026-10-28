@@ -8,6 +8,17 @@ Manage the full screenshot workflow from local capture to App Store upload.
 
 The `screenshots` command provides both local automation for capturing and framing screenshots, and App Store operations for uploading and managing screenshots in your app listings.
 
+## Version Selectors
+
+For `list`, `upload`, `plan`, and `apply`, `--version` accepts an App Store version ID, an API resource self-link, or a numeric version string such as `1.2.3`. Numeric strings require `--app` or `ASC_APP_ID` and default to `IOS` unless `--platform` is supplied. Other raw values are treated as IDs, not version-string filters.
+
+Version IDs retain their actual platform. `list --version VERSION_ID` needs no app. An explicit app verifies ownership; `--platform` also requires an app and verifies the platform. Upload, plan, and apply always require an app. `--version-id` remains supported as explicit ID selection, including numeric IDs; it cannot be combined with `--version`.
+
+```bash  theme={null}
+asc screenshots list --version "VERSION_ID" --locale "en-US"
+asc screenshots plan --app "123456789" --version "VERSION_ID"
+```
+
 ## Local Workflow
 
 If you encounter issues, please [file feedback](https://github.com/rorkai/App-Store-Connect-CLI/issues/new/choose).
@@ -164,8 +175,8 @@ asc screenshots apply --app "123456789" --version "1.2.3" --confirm
 **Plan/Apply Options:**
 
 * `--app` - App Store Connect app ID
-* `--version` - App Store version string
-* `--version-id` - App Store version ID (alternative to `--version`)
+* `--version` - App Store version ID, API self-link, or numeric version string
+* `--version-id` - Explicit App Store version ID (alternative to `--version`)
 * `--review-output-dir` - Directory containing `manifest.json` and `approved.json`
 * `--skip-existing` - Skip files whose checksum already exists remotely
 * `--replace` - Delete existing screenshots in each target set before uploading

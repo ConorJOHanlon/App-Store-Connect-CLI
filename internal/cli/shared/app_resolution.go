@@ -4,10 +4,18 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 )
+
+var appStoreVersionStringPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+)*$`)
+
+// IsAppStoreVersionString reports whether a selector is a numeric dotted version string.
+func IsAppStoreVersionString(value string) bool {
+	return appStoreVersionStringPattern.MatchString(value)
+}
 
 // ResolveAppStoreVersionIDAndState finds a version ID and state by version string and platform.
 func ResolveAppStoreVersionIDAndState(ctx context.Context, client *asc.Client, appID, version, platform string) (string, string, error) {
