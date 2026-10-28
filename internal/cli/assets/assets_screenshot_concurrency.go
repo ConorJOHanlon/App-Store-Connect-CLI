@@ -15,8 +15,9 @@ import (
 type screenshotConcurrencyKey struct{}
 
 const (
-	defaultScreenshotUploadConcurrency = 4
-	maxScreenshotUploadConcurrency     = 8
+	// App Store Connect holds at most 10 screenshots per set, so 10 uploads a full set in one round.
+	defaultScreenshotUploadConcurrency = 10
+	maxScreenshotUploadConcurrency     = 10
 )
 
 var uploadOneScreenshot = func(ctx context.Context, client *asc.Client, setID, filePath, sourceRootPath string, openedFiles openedScreenshotFiles) (asc.AssetUploadResultItem, screenshotPendingAsset, error) {
