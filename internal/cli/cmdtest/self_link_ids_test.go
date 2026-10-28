@@ -120,8 +120,8 @@ func TestSelfLinkVersionsViewUsesExtractedID(t *testing.T) {
 		"--version-id", selfLinkTestBase+"/v1/appStoreVersions/version-1?include=app",
 		"--output", "json",
 	)
-	if stderr != versionsViewSummaryDeprecationWarning {
-		t.Fatalf("stderr = %q, want %q", stderr, versionsViewSummaryDeprecationWarning)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 	if !strings.Contains(stdout, `"id":"version-1"`) {
 		t.Fatalf("stdout = %q, want version-1", stdout)
