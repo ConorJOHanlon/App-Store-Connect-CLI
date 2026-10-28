@@ -355,10 +355,11 @@ func TestSigningSyncImportPlanCountsExistingPaths(t *testing.T) {
 
 func TestSigningSyncImportFailuresWriteNothing(t *testing.T) {
 	tests := []struct {
-		name    string
-		mutate  func(t *testing.T, fixture openSSLImportFixture)
-		pass    string
-		wantErr string
+		certificateDirectory string
+		name                 string
+		mutate               func(t *testing.T, fixture openSSLImportFixture)
+		pass                 string
+		wantErr              string
 	}{
 		{
 			name:    "wrong source password",
@@ -398,13 +399,19 @@ func TestSigningSyncImportFailuresWriteNothing(t *testing.T) {
 			wantErr: fmt.Sprintf("source signing repository exceeds the %d-byte cumulative size limit", maxEncryptedSigningBytes),
 		},
 		{
-			name: "unsupported certificate directory",
-			mutate: func(t *testing.T, fixture openSSLImportFixture) {
-				if err := os.Rename(filepath.Join(fixture.dir, "certs", "development"), filepath.Join(fixture.dir, "certs", "developmnt")); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantErr: "unsupported certificate directory certs/developmnt",
+			name:                 "unsupported certificate directory",
+			certificateDirectory: "developmnt",
+			wantErr:              "unsupported certificate directory certs/developmnt",
+		},
+		{
+			name:                 "developer ID installer cannot be pulled",
+			certificateDirectory: "developer_id_installer",
+			wantErr:              "unsupported certificate directory certs/developer_id_installer",
+		},
+		{
+			name:                 "Mac installer distribution cannot be pulled",
+			certificateDirectory: "mac_installer_distribution",
+			wantErr:              "unsupported certificate directory certs/mac_installer_distribution",
 		},
 		{
 			name: "symlink escaping the source",
@@ -425,6 +432,11 @@ func TestSigningSyncImportFailuresWriteNothing(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newOpenSSLImportFixture(t, 1)
+			if test.certificateDirectory != "" {
+				if err := os.Rename(filepath.Join(fixture.dir, "certs", "development"), filepath.Join(fixture.dir, "certs", test.certificateDirectory)); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if test.mutate != nil {
 				test.mutate(t, fixture)
 			}

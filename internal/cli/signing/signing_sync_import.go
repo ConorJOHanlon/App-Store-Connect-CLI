@@ -80,10 +80,11 @@ The source uses a certs/<type>/ and profiles/<type>/ layout: each certificate
 is <id>.cer with its private key in <id>.p12 (a PEM private key or a PKCS#12
 file without a password), and each profile is a .mobileprovision or
 .provisionprofile file. Certificate directories are development, distribution,
-enterprise, developer_id_application, developer_id_installer, and
-mac_installer_distribution. The appstore, adhoc, and developer_id aliases also
-map to distribution. Encrypted signing inputs are limited to 256 files, 4 MiB
-per file, and 128 MiB total. Remote cloning uses the configured request timeout.
+enterprise, and developer_id_application. The appstore, adhoc, and developer_id
+aliases also map to distribution. Installer certificate directories are not
+supported because signing sync pull requires a provisioning-profile binding.
+Encrypted signing inputs are limited to 256 files, 4 MiB per file, and 128 MiB
+total. Remote cloning uses the configured request timeout.
 Every file is decrypted with --source-password. Each
 certificate must pair with its private key and each profile must carry a
 valid signature, or nothing is imported. Wildcard profiles are skipped with a
@@ -356,7 +357,7 @@ func loadOpenSSLImportSource(root rootfs.Root, password string) ([]openSSLImport
 		switch strings.ToLower(sourceType) {
 		case "development":
 			category = "development"
-		case "distribution", "appstore", "adhoc", "enterprise", "developer_id", "developer_id_application", "developer_id_installer", "mac_installer_distribution":
+		case "distribution", "appstore", "adhoc", "enterprise", "developer_id", "developer_id_application":
 			category = "distribution"
 		default:
 			return nil, nil, fmt.Errorf("unsupported certificate directory %s", path.Dir(relPath))
