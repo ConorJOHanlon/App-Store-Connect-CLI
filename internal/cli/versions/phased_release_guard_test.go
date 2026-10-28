@@ -36,18 +36,24 @@ type guardCheckCall struct {
 }
 
 type guardHarness struct {
-	t        *testing.T
-	mu       sync.Mutex
-	states   []string
-	days     []int
-	getErrs  int
-	gets     int
-	nullGet  int
-	patches  []string
-	checks   []guardCheckCall
-	results  []phasedReleaseCheckResult
-	checkErr error
-	timeouts []time.Duration
+	t            *testing.T
+	mu           sync.Mutex
+	states       []string
+	days         []int
+	getErrs      int
+	getErrStart  int
+	getErrStatus int
+	retryAfter   time.Duration
+	cancelGet    int
+	cancelDelay  time.Duration
+	gets         int
+	getTimes     []time.Time
+	nullGet      int
+	patches      []string
+	checks       []guardCheckCall
+	results      []phasedReleaseCheckResult
+	checkErr     error
+	timeouts     []time.Duration
 	// cancelAfterCheck cancels the run once this many checks have passed.
 	cancelAfterCheck int
 	cancel           context.CancelFunc
@@ -100,12 +106,28 @@ func (h *guardHarness) serve(req *http.Request) (*http.Response, error) {
 	switch {
 	case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/VERSION-1/appStoreVersionPhasedRelease":
 		h.gets++
+		h.getTimes = append(h.getTimes, time.Now())
+		if h.gets == h.cancelGet {
+			if h.cancelDelay > 0 {
+				time.AfterFunc(h.cancelDelay, h.cancel)
+			} else {
+				h.cancel()
+			}
+		}
 		if h.gets == h.nullGet {
 			return guardJSON(http.StatusOK, `{"data":null,"links":{}}`), nil
 		}
-		if h.getErrs > 0 {
+		if h.getErrs > 0 && h.gets >= h.getErrStart {
 			h.getErrs--
-			return guardJSON(http.StatusInternalServerError, `{"errors":[{"status":"500","code":"UNEXPECTED_ERROR","title":"An unexpected error occurred."}]}`), nil
+			status := h.getErrStatus
+			if status == 0 {
+				status = http.StatusInternalServerError
+			}
+			response := guardJSON(status, fmt.Sprintf(`{"errors":[{"status":"%d","code":"TEST_ERROR","title":%q}]}`, status, http.StatusText(status)))
+			if h.retryAfter > 0 {
+				response.Header.Set("Retry-After", fmt.Sprint(int(h.retryAfter/time.Second)))
+			}
+			return response, nil
 		}
 		state := h.states[min(len(h.states)-1, h.gets-1)]
 		return guardJSON(http.StatusOK, guardPhasedReleaseBody(state, h.days[min(len(h.days)-1, h.gets-1)])), nil
@@ -370,19 +392,23 @@ func TestPhasedReleaseGuardStopsCleanlyWhenReleaseLeavesActive(t *testing.T) {
 		extra       []string
 		wantOutcome string
 		wantChecks  int
+		getErrs     int
 	}{
-		{"already complete", []string{"COMPLETE"}, 0, nil, "already-complete", 0},
-		{"inactive", []string{"INACTIVE"}, 0, nil, "inactive", 0},
-		{"paused by someone else mid run", []string{"ACTIVE", "PAUSED"}, 0, nil, "already-paused", 1},
-		{"max polls reached", []string{"ACTIVE"}, 0, []string{"--max-polls", "2"}, "max-polls", 2},
-		{"paused during check is never completed", []string{"ACTIVE", "PAUSED"}, 0, []string{"--complete-on-day", "1"}, "already-paused", 1},
-		{"completed during failing check is not paused", []string{"ACTIVE", "COMPLETE"}, 1, nil, "already-complete", 1},
+		{"already complete", []string{"COMPLETE"}, 0, nil, "already-complete", 0, 0},
+		{"inactive", []string{"INACTIVE"}, 0, nil, "inactive", 0, 0},
+		{"paused by someone else mid run", []string{"ACTIVE", "PAUSED"}, 0, nil, "already-paused", 1, 0},
+		{"max polls reached", []string{"ACTIVE"}, 0, []string{"--max-polls", "2"}, "max-polls", 2, 0},
+		{"paused during check is never completed", []string{"ACTIVE", "PAUSED"}, 0, []string{"--complete-on-day", "1"}, "already-paused", 1, 0},
+		{"completed during failing check is not paused", []string{"ACTIVE", "COMPLETE"}, 1, nil, "already-complete", 1, 0},
+		{"paused while safety read recovers", []string{"ACTIVE", "PAUSED"}, 0, []string{"--complete-on-day", "1"}, "already-paused", 1, 1},
+		{"completed while safety read recovers", []string{"ACTIVE", "COMPLETE"}, 1, nil, "already-complete", 1, 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			h := newGuardHarness(t)
 			h.states, h.days = test.states, []int{2}
 			h.results = []phasedReleaseCheckResult{{ExitCode: test.exitCode}}
+			h.getErrStart, h.getErrs = 2, test.getErrs
 
 			stdout, _, err := h.run(guardArgs(append([]string{"--confirm"}, test.extra...)...)...)
 			if err != nil {
@@ -407,15 +433,18 @@ func TestPhasedReleaseGuardMissingReleaseStopsBeforeCheckOrMutation(t *testing.T
 		name       string
 		nullGet    int
 		wantChecks int
+		getErrs    int
 	}{
-		{"initial read", 1, 0},
-		{"recheck before pause", 2, 1},
+		{"initial read", 1, 0, 0},
+		{"recheck before pause", 2, 1, 0},
+		{"recheck after transient error", 3, 1, 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			h := newGuardHarness(t)
 			h.states, h.days = []string{"ACTIVE"}, []int{2}
 			h.results = []phasedReleaseCheckResult{{ExitCode: 1}}
 			h.nullGet = test.nullGet
+			h.getErrStart, h.getErrs = 2, test.getErrs
 
 			stdout, _, err := h.run(guardArgs("--confirm")...)
 			if err == nil || err.Error() != "phased-release guard: version VERSION-1 has no phased release" {
@@ -464,24 +493,71 @@ func TestPhasedReleaseGuardInterruptedRunNeverChangesState(t *testing.T) {
 	}
 }
 
-func TestPhasedReleaseGuardBoundsConsecutiveTransientReadFailures(t *testing.T) {
-	h := newGuardHarness(t)
-	h.states, h.days = []string{"ACTIVE"}, []int{2}
-	h.results = []phasedReleaseCheckResult{{ExitCode: 0}}
-	h.getErrs = 100
+func TestPhasedReleaseGuardTransientReadFailures(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		start       int
+		failures    int
+		status      int
+		cancelGet   int
+		wantGets    int
+		wantChecks  int
+		wantErr     string
+		retryAfter  time.Duration
+		cancelDelay time.Duration
+	}{
+		{"initial read recovers", 1, 1, 500, 0, 3, 1, "", 0, 0},
+		{"safety read recovers after server error", 2, 1, 500, 0, 3, 1, "", 0, 0},
+		{"safety read recovers after rate limit", 2, 1, 429, 0, 3, 1, "", 0, 0},
+		{"initial read exhausts tolerance", 1, 100, 500, 0, 6, 0, "giving up after 6 consecutive transient App Store Connect errors", 0, 0},
+		{"safety read exhausts tolerance", 2, 100, 500, 0, 7, 1, "giving up after 6 consecutive transient App Store Connect errors", 0, 0},
+		{"safety read is forbidden", 2, 1, 403, 0, 2, 1, "Forbidden", 0, 0},
+		{"canceled during safety read", 2, 1, 500, 2, 2, 1, "context canceled", 0, 0},
+		{"safety read honors exhausted client retry after", 2, 2, 429, 0, 4, 1, "", 10 * time.Second, 0},
+		{"canceled while honoring retry after", 2, 2, 429, 3, 3, 1, "context canceled", 10 * time.Second, 2 * time.Second},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newGuardHarness(t)
+			h.states, h.days = []string{"ACTIVE"}, []int{2}
+			h.results = []phasedReleaseCheckResult{{ExitCode: 2}, {ExitCode: 0}}
+			h.getErrStart, h.getErrs, h.getErrStatus, h.cancelGet = test.start, test.failures, test.status, test.cancelGet
+			h.retryAfter, h.cancelDelay = test.retryAfter, test.cancelDelay
+			if test.retryAfter > 0 {
+				t.Setenv("ASC_MAX_RETRIES", "1")
+			}
 
-	_, stderr, err := h.run(guardArgs("--confirm")...)
-	if err == nil || !strings.Contains(err.Error(), "giving up after 6 consecutive transient App Store Connect errors") {
-		t.Fatalf("error = %v, want bounded transient failure", err)
-	}
-	if h.gets != asc.DefaultMaxConsecutivePollFailures+1 {
-		t.Fatalf("reads = %d, want %d", h.gets, asc.DefaultMaxConsecutivePollFailures+1)
-	}
-	if len(h.checks) != 0 || len(h.patches) != 0 {
-		t.Fatalf("checks = %d patches = %v, want none without a readable state", len(h.checks), h.patches)
-	}
-	if !strings.Contains(stderr, "transient App Store Connect error while waiting (1/5)") {
-		t.Fatalf("stderr = %q, want tolerated failure progress", stderr)
+			stdout, stderr, err := h.run(guardArgs("--confirm", "--max-polls", "1", "--poll-interval", "15m")...)
+			if h.gets != test.wantGets || len(h.checks) != test.wantChecks {
+				t.Fatalf("reads = %d checks = %d, want %d reads and %d checks; error = %v", h.gets, len(h.checks), test.wantGets, test.wantChecks, err)
+			}
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("error = %v, want %q", err, test.wantErr)
+				}
+				if len(h.patches) != 0 || stdout != "" {
+					t.Fatalf("patches = %v stdout = %q, want no mutation or receipt", h.patches, stdout)
+				}
+			} else {
+				var reported shared.ReportedError
+				if !errors.As(err, &reported) || !slices.Equal(h.patches, []string{"PAUSED"}) {
+					t.Fatalf("error = %v patches = %v, want reported failure and one PAUSED mutation", err, h.patches)
+				}
+				result := decodeGuardResult(t, stdout)
+				wantChecks := []asc.PhasedReleaseGuardCheck{{CurrentDayNumber: 2, ExitCode: 2, Action: "pause"}}
+				if result.Outcome != "paused" || !slices.Equal(result.Checks, wantChecks) {
+					t.Fatalf("receipt = %+v, want paused with original failed check %+v", result, wantChecks)
+				}
+				if test.start == 2 && h.getTimes[2].Sub(h.getTimes[1]) >= time.Minute {
+					t.Fatalf("safety retry took %s, want less than a minute despite 15m health-check interval", h.getTimes[2].Sub(h.getTimes[1]))
+				}
+				if delay := h.getTimes[len(h.getTimes)-1].Sub(h.getTimes[len(h.getTimes)-2]); delay < test.retryAfter {
+					t.Fatalf("last safety retry took %s, must honor Retry-After %s after the client retry budget is exhausted", delay, test.retryAfter)
+				}
+			}
+			if test.status != 403 && test.cancelGet == 0 && !strings.Contains(stderr, "transient App Store Connect error while waiting (1/5)") {
+				t.Fatalf("stderr = %q, want tolerated failure progress", stderr)
+			}
+		})
 	}
 }
 

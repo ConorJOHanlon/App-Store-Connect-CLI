@@ -231,7 +231,21 @@ func (g *phasedReleaseGuard) step(ctx context.Context, resp *asc.AppStoreVersion
 		action = "would-" + action
 		outcome = action
 	} else {
-		current, err := g.fetch(ctx)
+		var retryAt time.Time
+		current, err := asc.PollUntilTolerant(ctx, asc.DefaultBaseDelay, func(ctx context.Context) (*asc.AppStoreVersionPhasedReleaseResponse, bool, error) {
+			if delay := time.Until(retryAt); delay > 0 {
+				timer := time.NewTimer(delay)
+				defer timer.Stop()
+				select {
+				case <-ctx.Done():
+					return nil, false, ctx.Err()
+				case <-timer.C:
+				}
+			}
+			current, err := g.fetch(ctx)
+			retryAt = time.Now().Add(asc.GetRetryAfter(err))
+			return current, err == nil, err
+		}, asc.PollOptions{Tolerate: asc.IsTransientWaitError})
 		if err != nil {
 			return true, fmt.Errorf("recheck phased release before %s: %w", action, err)
 		}
