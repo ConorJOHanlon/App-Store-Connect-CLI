@@ -1,7 +1,7 @@
 # Apple Ads Campaign Management API v5 Support (Historical Scope)
 
-Status: Removed in 6.0.0 after Apple retired Campaign Management API v5 on
-January 26, 2027; retained as a historical reference only. See
+Status: Removed in 6.0.0 ahead of Apple's scheduled Campaign Management API v5
+retirement on January 26, 2027; retained as a historical reference only. See
 `docs/release-notes-apple-ads-v5-removal.md`.
 Research date: May 31, 2026
 Original target API: Apple Ads Campaign Management API 5.5

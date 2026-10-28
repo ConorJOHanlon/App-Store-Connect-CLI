@@ -405,12 +405,12 @@ schema, context, pagination, and confirmation contract.
 
 ## Migrating from Campaign Management API v5
 
-Apple retired the Campaign Management API v5 on January 26, 2027, and 6.0.0
-removed the `asc ads v5 ...` namespace. Every former `asc ads v5 ...` invocation
+Release 6.0.0 removes the `asc ads v5 ...` namespace ahead of Apple's scheduled
+Campaign Management API v5 retirement on January 26, 2027. Every former v5 invocation
 now exits with status 2 and names its Platform API v1 replacement, for example:
 
 ```text  theme={null}
-Error: `asc ads v5 campaigns list` was removed in 6.0.0 after Apple retired Campaign Management API v5 on January 26, 2027. Use `asc ads campaigns find`. Platform API v1 commands take --ad-account and v1 request bodies.
+Error: `asc ads v5 campaigns list` was removed in 6.0.0. Apple has scheduled Campaign Management API v5 retirement for January 26, 2027. Use `asc ads campaigns find`. Platform API v1 commands take --ad-account and v1 request bodies.
 ```
 
 Migrate each script one command at a time. Run `asc ads --help` and the

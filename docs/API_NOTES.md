@@ -172,7 +172,7 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
 
 ## Apple Ads Platform API v1
 
-- Platform API v1 (`https://api.ads.apple.com/v1/`) is the only `asc ads` transport. Apple retired Campaign Management API v5 on January 26, 2027, and 6.0.0 removed `asc ads v5`; any `asc ads v5 ...` invocation exits 2 with a removal error that names the v1 replacement from the ledger in `internal/cli/ads/v5_removal.go` (see `docs/release-notes-apple-ads-v5-removal.md`).
+- Platform API v1 (`https://api.ads.apple.com/v1/`) is the only `asc ads` transport. Release 6.0.0 removes `asc ads v5` ahead of Apple's scheduled Campaign Management API v5 retirement on January 26, 2027; any `asc ads v5 ...` invocation exits 2 with a removal error that names the v1 replacement from the ledger in `internal/cli/ads/v5_removal.go` (see `docs/release-notes-apple-ads-v5-removal.md`).
 - Account-scoped v1 calls send `X-AP-Context: adAccountId=<AD_ACCOUNT_ID>;` resolved from `--ad-account`, `ASC_ADS_AD_ACCOUNT_ID`, profile `ad_account_id`, or root `ads.ad_account_id` when no profile is selected (`--org` / `ASC_ADS_ORG_ID` are never fallbacks).
 - `POST /v1/ad-accounts` omits `X-AP-Context`, whereas `GET`/`PUT /v1/ad-accounts/{id}` require `X-AP-Context: adAccountId=<id>;` matching `{id}`.
 - `asc ads auth login --network`, `asc ads auth status --validate`, and `asc ads auth discover` call `GET /v1/me` (and `GET /v1/acls` for `discover`) without `X-AP-Context` (`ASC_ADS_ACCESS_TOKEN` skips OAuth token exchange).

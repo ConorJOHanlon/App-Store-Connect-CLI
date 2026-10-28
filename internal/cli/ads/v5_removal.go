@@ -115,7 +115,7 @@ func removedAdsV5UsageError(args []string) error {
 		guidance = replacement
 	}
 	return shared.WithDiagnostic(shared.UsageErrorf(
-		"`%s` was removed in 6.0.0 after Apple retired Campaign Management API v5 on January 26, 2027. %s Platform API v1 commands take --ad-account and v1 request bodies.",
+		"`%s` was removed in 6.0.0. Apple has scheduled Campaign Management API v5 retirement for January 26, 2027. %s Platform API v1 commands take --ad-account and v1 request bodies.",
 		command, guidance,
 	), shared.DiagnosticInvalidInput, "")
 }

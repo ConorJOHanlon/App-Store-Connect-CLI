@@ -76,12 +76,12 @@ func TestAdsUsageErrorsExitTwoWithBuiltBinary(t *testing.T) {
 		{
 			name:       "removed v5 command names v1 replacement",
 			args:       []string{"ads", "v5", "campaigns", "list", "--org", "123456", "--output", "json"},
-			wantStderr: "Error: `asc ads v5 campaigns list` was removed in 6.0.0 after Apple retired Campaign Management API v5 on January 26, 2027. Use `asc ads campaigns find`.",
+			wantStderr: "Error: `asc ads v5 campaigns list` was removed in 6.0.0. Apple has scheduled Campaign Management API v5 retirement for January 26, 2027. Use `asc ads campaigns find`.",
 		},
 		{
 			name:       "removed v5 namespace without known path",
 			args:       []string{"ads", "v5", "unknown-group"},
-			wantStderr: "Error: `asc ads v5` was removed in 6.0.0 after Apple retired Campaign Management API v5 on January 26, 2027. Use the Platform API v1 commands listed by `asc ads --help`.",
+			wantStderr: "Error: `asc ads v5` was removed in 6.0.0. Apple has scheduled Campaign Management API v5 retirement for January 26, 2027. Use the Platform API v1 commands listed by `asc ads --help`.",
 		},
 	}
 

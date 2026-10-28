@@ -1,8 +1,9 @@
 # Apple Ads Campaign Management API v5 removal
 
-Apple retired the Apple Ads Campaign Management API v5 on January 26, 2027.
-Release 6.0.0 removes the `asc ads v5` namespace that 4.4.0 deprecated, along
-with its raw request command, `reports preset` helper, and campaign
+Apple has scheduled Campaign Management API v5 retirement for January 26, 2027.
+Release 6.0.0 removes the `asc ads v5` namespace ahead of that date. It was
+deprecated in 4.4.0. This removal includes its raw request command,
+`reports preset` helper, and campaign
 `pause`/`resume` workflows. The Platform API v1 commands under `asc ads` are
 unchanged.
 
@@ -11,7 +12,7 @@ authentication or any network request. The error names the v1 replacement for
 the command when one exists:
 
 ```text
-Error: `asc ads v5 campaigns list` was removed in 6.0.0 after Apple retired Campaign Management API v5 on January 26, 2027. Use `asc ads campaigns find`. Platform API v1 commands take --ad-account and v1 request bodies.
+Error: `asc ads v5 campaigns list` was removed in 6.0.0. Apple has scheduled Campaign Management API v5 retirement for January 26, 2027. Use `asc ads campaigns find`. Platform API v1 commands take --ad-account and v1 request bodies.
 ```
 
 ## Migrate a script
