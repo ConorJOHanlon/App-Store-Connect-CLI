@@ -118,11 +118,25 @@ before authentication or API requests.
 asc versions view --version-id "VERSION_ID"
 asc versions view --app "123456789" --version "1.2.3"
 asc versions view --app "123456789" --version "1.2.3" --platform MAC_OS
+asc versions view --version-id "VERSION_ID" --include build
 asc versions view --version-id "VERSION_ID" --include-build --include-submission
 asc versions view --version-id "VERSION_ID" --include "ageRatingDeclaration,appStoreReviewDetail"
 ```
 
 **Response:**
+
+With any `--include`, view prints Apple's `appStoreVersions` envelope: every
+attribute Apple returns (including `appStoreState`, `releaseType`,
+`copyright`, `reviewType`, `usesIdfa`, and null values such as
+`"earliestReleaseDate": null`), `relationships`, `included`, and `links`. Two
+exceptions: an included `appStoreReviewDetails` demo account password is
+redacted unless you pass `--include-sensitive`, and `ageRatingDeclaration` is
+fetched with a second request and added to `included`.
+
+Without `--include`, view prints a reduced summary and, for JSON output, warns on stderr. The
+summary is deprecated; the next major release prints the envelope instead. Use
+`--include build` in place of `--include-build` and
+`--include appStoreVersionSubmission` in place of `--include-submission`.
 
 ```json  theme={null}
 {

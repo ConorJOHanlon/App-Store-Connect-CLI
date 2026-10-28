@@ -111,6 +111,39 @@ asc localizations list --version "VERSION_ID" --paginate
 
 ***
 
+### `asc localizations view`
+
+View one App Store version or app info localization by ID. JSON output is App
+Store Connect's response envelope, unmodified, so `null` attributes are kept.
+
+<ParamField path="--id" type="string" required>
+  Localization resource ID
+</ParamField>
+
+<ParamField path="--type" type="string" default="version">
+  Localization type: `version` (default) reads an
+  `appStoreVersionLocalizations` resource, `app-info` reads an
+  `appInfoLocalizations` resource
+</ParamField>
+
+<ParamField path="--fields" type="string">
+  Fields to return, comma-separated. For `version`: `description`, `locale`,
+  `keywords`, `marketingUrl`, `promotionalText`, `supportUrl`, `whatsNew`,
+  `appStoreVersion`, `appScreenshotSets`, `appPreviewSets`, `searchKeywords`,
+  `placements`. For `app-info`: `locale`, `name`, `subtitle`,
+  `privacyPolicyUrl`, `privacyChoicesUrl`, `privacyPolicyText`, `appInfo`.
+</ParamField>
+
+**Examples:**
+
+```bash  theme={null}
+asc localizations view --id "LOCALIZATION_ID"
+asc localizations view --id "LOCALIZATION_ID" --fields "description,whatsNew"
+asc localizations view --type app-info --id "LOCALIZATION_ID" --fields "name,subtitle"
+```
+
+***
+
 ### `asc localizations download`
 
 Download localizations to .strings files.

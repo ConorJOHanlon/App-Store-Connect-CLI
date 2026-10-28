@@ -37,7 +37,7 @@ Opt-in scopes (add to --include for pull, plan, and apply):
   binds the reference, not the secret value. Attachments are not managed.
 
 Not yet included in this group:
-  - categories, age ratings, screenshots
+  - screenshots
 
 Note: copyright is managed via "asc versions create --copyright" or "asc versions update --copyright".
 

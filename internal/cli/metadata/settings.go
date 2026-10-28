@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,7 @@ const (
 type metadataSettingField struct {
 	name      string
 	kind      metadataSettingFieldKind
+	values    []string
 	secretEnv string
 }
 
@@ -50,6 +52,7 @@ type metadataSettingScope struct {
 	fileName     string
 	fields       []metadataSettingField
 	needsAppInfo bool
+	validate     func(map[string]string, bool) error
 	// fetch returns nil values only when the resource does not exist.
 	fetch  func(ctx context.Context, client *asc.Client, target metadataSettingTarget) (map[string]string, error)
 	update func(ctx context.Context, client *asc.Client, target metadataSettingTarget, changed map[string]string) (string, error)
@@ -63,7 +66,7 @@ type metadataSettingPlan struct {
 }
 
 func metadataSettingScopes() []metadataSettingScope {
-	return []metadataSettingScope{reviewInformationSettingScope}
+	return []metadataSettingScope{categoriesSettingScope, ageRatingSettingScope, reviewInformationSettingScope}
 }
 
 func metadataSettingScopeNames() []string {
@@ -161,6 +164,11 @@ func readMetadataSettingFile(dir string, scope metadataSettingScope) (map[string
 			values[field.name+metadataSecretReferenceSuffix] = reference
 		}
 	}
+	if scope.validate != nil {
+		if err := scope.validate(values, false); err != nil {
+			return nil, shared.UsageErrorf("invalid metadata schema in %s: %v", path, err)
+		}
+	}
 	return values, nil
 }
 
@@ -195,6 +203,9 @@ func decodeMetadataSettingValue(dir string, field metadataSettingField, raw json
 		value = strings.TrimSpace(value)
 		if value == "" {
 			return "", fmt.Errorf("%s cannot be empty; omit it to leave the value unchanged", field.name)
+		}
+		if len(field.values) > 0 && !slices.Contains(field.values, value) {
+			return "", fmt.Errorf("%s must be one of %s", field.name, strings.Join(field.values, ", "))
 		}
 		return value, nil
 	}
