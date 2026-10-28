@@ -7,16 +7,28 @@ import (
 
 // CustomerReviewDigestResult summarizes customer reviews created after a cursor.
 type CustomerReviewDigestResult struct {
-	AppID         string                       `json:"appId"`
-	Since         string                       `json:"since"`
-	CursorSource  string                       `json:"cursorSource"`
-	Cursor        string                       `json:"cursor"`
-	Total         int                          `json:"total"`
-	AverageRating float64                      `json:"averageRating"`
-	Unanswered    int                          `json:"unanswered"`
-	Ratings       []CustomerReviewDigestRating `json:"ratings"`
-	Territories   []CustomerReviewDigestGroup  `json:"territories"`
-	LowestRated   []CustomerReviewDigestReview `json:"lowestRated"`
+	AppID                    string                        `json:"appId"`
+	Since                    string                        `json:"since"`
+	CursorSource             string                        `json:"cursorSource"`
+	Cursor                   string                        `json:"cursor"`
+	Total                    int                           `json:"total"`
+	AverageRating            float64                       `json:"averageRating"`
+	Unanswered               int                           `json:"unanswered"`
+	Ratings                  []CustomerReviewDigestRating  `json:"ratings"`
+	Territories              []CustomerReviewDigestGroup   `json:"territories"`
+	Versions                 []CustomerReviewDigestVersion `json:"versions"`
+	UnassignedVersionReviews int                           `json:"unassignedVersionReviews"`
+	LowestRated              []CustomerReviewDigestReview  `json:"lowestRated"`
+}
+
+// CustomerReviewDigestVersion aggregates reviews associated with one app version.
+type CustomerReviewDigestVersion struct {
+	VersionID     string  `json:"versionId"`
+	Version       string  `json:"version"`
+	Platform      string  `json:"platform"`
+	Count         int     `json:"count"`
+	AverageRating float64 `json:"averageRating"`
+	Unanswered    int     `json:"unanswered"`
 }
 
 // CustomerReviewDigestRating counts reviews with one star rating.
@@ -53,6 +65,7 @@ func customerReviewDigestTables(result *CustomerReviewDigestResult, render func(
 		{"Reviews", strconv.Itoa(result.Total)},
 		{"Average Rating", fmt.Sprintf("%.2f", result.AverageRating)},
 		{"Unanswered", strconv.Itoa(result.Unanswered)},
+		{"Reviews without version", strconv.Itoa(result.UnassignedVersionReviews)},
 	})
 
 	ratingRows := make([][]string, 0, len(result.Ratings))
@@ -71,6 +84,19 @@ func customerReviewDigestTables(result *CustomerReviewDigestResult, render func(
 		})
 	}
 	render([]string{"Territory", "Count", "Average Rating", "Unanswered"}, territoryRows)
+
+	versionRows := make([][]string, 0, len(result.Versions))
+	for _, group := range result.Versions {
+		versionRows = append(versionRows, []string{
+			SanitizeTerminalText(group.Version),
+			SanitizeTerminalText(group.Platform),
+			SanitizeTerminalText(group.VersionID),
+			strconv.Itoa(group.Count),
+			fmt.Sprintf("%.2f", group.AverageRating),
+			strconv.Itoa(group.Unanswered),
+		})
+	}
+	render([]string{"Version", "Platform", "Version ID", "Count", "Average Rating", "Unanswered"}, versionRows)
 
 	reviewRows := make([][]string, 0, len(result.LowestRated))
 	for _, review := range result.LowestRated {

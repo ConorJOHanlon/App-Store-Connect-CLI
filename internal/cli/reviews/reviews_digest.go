@@ -22,7 +22,10 @@ import (
 
 const reviewDigestStateFileLimit = 64 * 1024
 
-var errReviewDigestReachedCursor = errors.New("reached digest cursor")
+var (
+	errReviewDigestReachedCursor    = errors.New("reached digest cursor")
+	errReviewDigestVersionsComplete = errors.New("all digest reviews have a version")
+)
 
 type reviewDigestState struct {
 	Cursor string `json:"cursor"`
@@ -54,9 +57,13 @@ func ReviewsDigestCommand() *ffcli.Command {
 		LongHelp: `Summarize customer reviews created after a cursor.
 
 Reports the review count, average rating, star distribution, counts and
-average rating by territory, the lowest-rated reviews, and how many reviews
-have no response. The App Store Connect API does not expose the app version
-of a customer review, so the digest does not group by version.
+average rating by territory and app version, the lowest-rated reviews, and
+how many reviews have no response. Version groups distinguish platform and
+App Store version ID, even when version numbers match. Reviews that do not
+appear in any returned version remain in the overall totals and are counted
+as unassignedVersionReviews ("Reviews without version" in human output).
+Version lookup stops once every digest review is assigned. Otherwise it reads
+all version pages; raise ASC_TIMEOUT for apps with long version histories.
 
 The cursor is exclusive: only reviews created after it are included. Reviews
 are read newest first and pagination stops at the first review at or before
@@ -73,11 +80,19 @@ Examples:
   asc reviews digest --app "123456789" --since 2026-10-01T00:00:00Z --output table
   asc reviews digest --app "123456789" --state-file reviews-cursor.json --since 2026-10-01 --write-state
 
-Send to Slack and advance the cursor only after Slack accepts the digest
-(skip the cp on the first run, before reviews-cursor.json exists):
-  cp reviews-cursor.json next-cursor.json
-  asc reviews digest --app "123456789" --state-file next-cursor.json --since 2026-10-01 --write-state --output json > digest.json
-  asc notify slack --message "New customer reviews" --payload-file digest.json && mv next-cursor.json reviews-cursor.json`,
+Send to Slack and advance the cursor only after Slack accepts the digest.
+Each attempt starts from the committed cursor, or the explicit initial date:
+  (
+    set -e
+    if [ -e reviews-cursor.json ]; then
+      cp reviews-cursor.json next-cursor.json
+    else
+      printf '%s\n' '{"cursor":"2026-10-01T00:00:00Z"}' > next-cursor.json
+    fi
+    asc reviews digest --app "123456789" --state-file next-cursor.json --write-state --output json > digest.json
+    asc notify slack --message "New customer reviews" --payload-file digest.json
+    mv next-cursor.json reviews-cursor.json
+  )`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -314,6 +329,11 @@ func buildReviewDigest(ctx context.Context, client *asc.Client, appID string, cu
 		return nil, err
 	}
 
+	result.Versions, result.UnassignedVersionReviews, err = collectReviewDigestVersions(ctx, client, appID, cursor, reviews)
+	if err != nil {
+		return nil, fmt.Errorf("version groups: %w", err)
+	}
+
 	result.AverageRating = roundReviewDigestAverage(ratingTotal, result.Total)
 	for rating := 5; rating >= 1; rating-- {
 		result.Ratings = append(result.Ratings, asc.CustomerReviewDigestRating{Rating: rating, Count: ratingCounts[rating]})
@@ -335,6 +355,103 @@ func buildReviewDigest(ctx context.Context, client *asc.Client, appID string, cu
 	}
 	result.LowestRated = reviews
 	return result, nil
+}
+
+func collectReviewDigestVersions(ctx context.Context, client *asc.Client, appID string, cursor time.Time, reviews []asc.CustomerReviewDigestReview) ([]asc.CustomerReviewDigestVersion, int, error) {
+	groups := []asc.CustomerReviewDigestVersion{}
+	if len(reviews) == 0 {
+		return groups, 0, nil
+	}
+	byID := make(map[string]asc.CustomerReviewDigestReview, len(reviews))
+	assigned := make(map[string]bool, len(reviews))
+	for _, review := range reviews {
+		byID[review.ID] = review
+	}
+	first, err := client.GetAppStoreVersions(ctx, appID, asc.WithAppStoreVersionsLimit(200))
+	if err != nil {
+		return nil, 0, err
+	}
+	consumeVersions := func(page asc.PaginatedResponse) error {
+		response, ok := page.(*asc.AppStoreVersionsResponse)
+		if !ok {
+			return fmt.Errorf("unexpected versions response type %T", page)
+		}
+		for _, version := range response.Data {
+			firstReviews, err := client.GetAppStoreVersionCustomerReviews(ctx, version.ID, asc.WithReviewSort("-createdDate"), asc.WithLimit(200))
+			if err != nil {
+				return fmt.Errorf("version %q: %w", version.ID, err)
+			}
+			group := asc.CustomerReviewDigestVersion{VersionID: version.ID, Version: version.Attributes.VersionString, Platform: string(version.Attributes.Platform)}
+			ratingSum := 0
+			consumeReviews := func(page asc.PaginatedResponse) error {
+				response, ok := page.(*asc.ReviewsResponse)
+				if !ok {
+					return fmt.Errorf("unexpected reviews response type %T", page)
+				}
+				for _, item := range response.Data {
+					created, ok := shared.ParseRFC3339Date(item.Attributes.CreatedDate)
+					if !ok {
+						return fmt.Errorf("review %q has invalid createdDate %q", item.ID, item.Attributes.CreatedDate)
+					}
+					if !created.After(cursor) {
+						return errReviewDigestReachedCursor
+					}
+					if review, included := byID[item.ID]; included && !assigned[item.ID] {
+						assigned[item.ID] = true
+						group.Count++
+						ratingSum += review.Rating
+						if !review.Answered {
+							group.Unanswered++
+						}
+						if len(assigned) == len(byID) {
+							return errReviewDigestVersionsComplete
+						}
+					}
+				}
+				return nil
+			}
+			fetchReviews := func(ctx context.Context, nextURL string) (asc.PaginatedResponse, error) {
+				return client.GetAppStoreVersionCustomerReviews(ctx, version.ID, asc.WithNextURL(nextURL))
+			}
+			pageErr := asc.PaginateEach(ctx, firstReviews, fetchReviews, consumeReviews)
+			if pageErr != nil && !errors.Is(pageErr, errReviewDigestReachedCursor) && !errors.Is(pageErr, errReviewDigestVersionsComplete) {
+				return fmt.Errorf("version %q: %w", version.ID, pageErr)
+			}
+			if group.Count > 0 {
+				group.AverageRating = roundReviewDigestAverage(ratingSum, group.Count)
+				groups = append(groups, group)
+			}
+			if errors.Is(pageErr, errReviewDigestVersionsComplete) {
+				return pageErr
+			}
+		}
+		return nil
+	}
+	fetchVersions := func(ctx context.Context, nextURL string) (asc.PaginatedResponse, error) {
+		return client.GetAppStoreVersions(ctx, appID, asc.WithAppStoreVersionsNextURL(nextURL))
+	}
+	if err := asc.PaginateEach(ctx, first, fetchVersions, consumeVersions); err != nil && !errors.Is(err, errReviewDigestVersionsComplete) {
+		return nil, 0, err
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		if groups[i].Count != groups[j].Count {
+			return groups[i].Count > groups[j].Count
+		}
+		if groups[i].Platform != groups[j].Platform {
+			return groups[i].Platform < groups[j].Platform
+		}
+		if groups[i].Version != groups[j].Version {
+			return groups[i].Version < groups[j].Version
+		}
+		return groups[i].VersionID < groups[j].VersionID
+	})
+	unassigned := 0
+	for _, review := range reviews {
+		if !assigned[review.ID] {
+			unassigned++
+		}
+	}
+	return groups, unassigned, nil
 }
 
 func roundReviewDigestAverage(sum, count int) float64 {
