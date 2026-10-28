@@ -17,6 +17,22 @@ func TestPricePointLadderReadsSendTerritoryFiltersIncludesAndReadEveryPageForPri
 		wantStdout string
 	}{
 		{
+			name:       "iap list preserves a comma within a territory name",
+			args:       []string{"iap", "pricing", "price-points", "list", "--iap-id", "9000000001", "--territory", "Moldova, Republic of"},
+			path:       "/v2/inAppPurchases/9000000001/pricePoints",
+			wantQuery:  map[string]string{"filter[territory]": "MDA"},
+			pages:      []string{`{"data":[],"links":{}}`},
+			wantStdout: `"data":[]`,
+		},
+		{
+			name:       "app list preserves a comma within a territory name",
+			args:       []string{"pricing", "price-points", "--app", "app-1", "--territory", "Moldova, Republic of"},
+			path:       "/v1/apps/app-1/appPricePoints",
+			wantQuery:  map[string]string{"filter[territory]": "MDA"},
+			pages:      []string{`{"data":[],"links":{}}`},
+			wantStdout: `"data":[]`,
+		},
+		{
 			name:       "iap list takes several territories and includes territory",
 			args:       []string{"iap", "pricing", "price-points", "list", "--iap-id", "9000000001", "--territory", "DEU,GB", "--include", "territory"},
 			path:       "/v2/inAppPurchases/9000000001/pricePoints",

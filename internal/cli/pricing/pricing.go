@@ -11,7 +11,6 @@ import (
 	"github.com/peterbourgon/ff/v3/ffcli"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
-	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/ascterritory"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
@@ -218,7 +217,7 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			territoryIDs, err := ascterritory.NormalizeMany(shared.SplitCSV(*territory))
+			territoryIDs, err := shared.NormalizeASCTerritoryCSV(*territory)
 			if err != nil {
 				return shared.UsageError(err.Error())
 			}
@@ -483,7 +482,7 @@ Examples:
 			defer cancel()
 
 			if *resolved {
-				resp, err := fetchResolvedAppSchedulePrices(requestCtx, client, trimmedScheduleID, "manual", *limit, *next, shared.PricingNow())
+				resp, err := fetchResolvedAppSchedulePrices(requestCtx, client, trimmedScheduleID, "manual", *limit, *next, shared.PricingNow(), false)
 				if err != nil {
 					return fmt.Errorf("pricing schedule manual-prices: failed to resolve: %w", err)
 				}
@@ -573,7 +572,7 @@ Examples:
 			defer cancel()
 
 			if *resolved {
-				resp, err := fetchResolvedAppSchedulePrices(requestCtx, client, trimmedScheduleID, "automatic", *limit, *next, shared.PricingNow())
+				resp, err := fetchResolvedAppSchedulePrices(requestCtx, client, trimmedScheduleID, "automatic", *limit, *next, shared.PricingNow(), false)
 				if err != nil {
 					return fmt.Errorf("pricing schedule automatic-prices: failed to resolve: %w", err)
 				}

@@ -10,7 +10,6 @@ import (
 	"github.com/peterbourgon/ff/v3/ffcli"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
-	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/ascterritory"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
@@ -129,11 +128,11 @@ Examples:
 				asc.WithIAPPricePointsNextURL(*next),
 				asc.WithIAPPricePointsInclude(includes),
 			}
-			if territories := shared.SplitCSV(*territory); len(territories) > 0 {
-				territoryIDs, err := ascterritory.NormalizeMany(territories)
-				if err != nil {
-					return shared.UsageError(err.Error())
-				}
+			territoryIDs, err := shared.NormalizeASCTerritoryCSV(*territory)
+			if err != nil {
+				return shared.UsageError(err.Error())
+			}
+			if len(territoryIDs) > 0 {
 				opts = append(opts, asc.WithIAPPricePointsTerritory(strings.Join(territoryIDs, ",")))
 			}
 
