@@ -163,7 +163,8 @@ func TestLocalizationsMutationsResolveVersionStrings(t *testing.T) {
 			ambiguous  bool
 			fromEnv    bool
 			resourceID bool
-		}{{name: "resolved"}, {name: "environment app", fromEnv: true}, {name: "resource ID with environment app", fromEnv: true, resourceID: true}, {name: "ambiguous", ambiguous: true}} {
+			paddedApp  bool
+		}{{name: "resolved"}, {name: "padded app", paddedApp: true}, {name: "environment app", fromEnv: true}, {name: "resource ID with environment app", fromEnv: true, resourceID: true}, {name: "ambiguous", ambiguous: true}} {
 			t.Run(command+"/"+scenario.name, func(t *testing.T) {
 				ambiguous := scenario.ambiguous
 				setupAuth(t)
@@ -211,7 +212,11 @@ func TestLocalizationsMutationsResolveVersionStrings(t *testing.T) {
 				if scenario.fromEnv {
 					t.Setenv("ASC_APP_ID", "app-1")
 				} else {
-					args = append(args, "--app", "app-1")
+					appID := "app-1"
+					if scenario.paddedApp {
+						appID = " app-1 "
+					}
+					args = append(args, "--app", appID)
 				}
 				if scenario.resourceID {
 					args = append(args, "--version", "ver-1")

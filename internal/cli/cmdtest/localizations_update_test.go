@@ -686,17 +686,21 @@ func TestLocalizationsMutationSelectorValidationBeforeAuth(t *testing.T) {
 	t.Setenv("ASC_APP_ID", "")
 	for _, command := range []string{"create", "update"} {
 		for _, test := range []struct {
-			name string
-			args []string
-			want string
+			name   string
+			args   []string
+			want   string
+			appEnv string
 		}{
-			{"string needs app", []string{"--version", "1.17.0"}, "--app is required (or set ASC_APP_ID) when --version is a version string"},
-			{"ID rejects app", []string{"--version", "ver-1", "--app", "app-1"}, "--app only applies when --version is a version string"},
-			{"ID rejects platform", []string{"--version", "ver-1", "--platform", "IOS"}, "--platform requires a version string with --app"},
-			{"empty platform", []string{"--version", "ver-1", "--platform", ""}, "--platform must not be empty"},
-			{"invalid platform", []string{"--app", "app-1", "--version", "1.17.0", "--platform", "INVALID"}, "--platform must be one of: IOS, MAC_OS, TV_OS, VISION_OS"},
+			{"string needs app", []string{"--version", "1.17.0"}, "--app is required (or set ASC_APP_ID) when --version is a version string", ""},
+			{"blank app", []string{"--version", "1.17.0", "--app", " \t"}, "--app is required (or set ASC_APP_ID) when --version is a version string", ""},
+			{"blank app overrides environment", []string{"--version", "1.17.0", "--app", " \t"}, "--app is required (or set ASC_APP_ID) when --version is a version string", "app-1"},
+			{"ID rejects app", []string{"--version", "ver-1", "--app", "app-1"}, "--app only applies when --version is a version string", ""},
+			{"ID rejects platform", []string{"--version", "ver-1", "--platform", "IOS"}, "--platform requires a version string with --app", ""},
+			{"empty platform", []string{"--version", "ver-1", "--platform", ""}, "--platform must not be empty", ""},
+			{"invalid platform", []string{"--app", "app-1", "--version", "1.17.0", "--platform", "INVALID"}, "--platform must be one of: IOS, MAC_OS, TV_OS, VISION_OS", ""},
 		} {
 			t.Run(command+"/"+test.name, func(t *testing.T) {
+				t.Setenv("ASC_APP_ID", test.appEnv)
 				args := append([]string{"localizations", command, "--locale", "en-US", "--description", "Description"}, test.args...)
 				stdout, stderr := captureOutput(t, func() {
 					if code := cmd.Run(args, "test"); code != cmd.ExitUsage {

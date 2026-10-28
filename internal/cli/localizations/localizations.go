@@ -345,6 +345,7 @@ var appStoreVersionStringPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+)*$`)
 // Without a platform it searches every platform and asks for --platform when
 // the version string exists on more than one.
 func resolveLocalizationsVersionString(ctx context.Context, client *asc.Client, appID, version, platform string) (string, error) {
+	appID = strings.TrimSpace(appID)
 	opts := []asc.AppStoreVersionsOption{
 		asc.WithAppStoreVersionsVersionStrings([]string{version}),
 		asc.WithAppStoreVersionsLimit(200),
@@ -748,7 +749,7 @@ func normalizeLocalizationVersionSelector(version, appID, platform string) (bool
 	if !isVersionString && strings.TrimSpace(appID) != "" {
 		return false, "", shared.UsageError("--app only applies when --version is a version string")
 	}
-	if isVersionString && shared.ResolveAppID(appID) == "" {
+	if isVersionString && strings.TrimSpace(shared.ResolveAppID(appID)) == "" {
 		return false, "", shared.UsageError("--app is required (or set ASC_APP_ID) when --version is a version string; otherwise pass an App Store version ID from asc versions list --app APP_ID")
 	}
 	if strings.TrimSpace(platform) != "" {
