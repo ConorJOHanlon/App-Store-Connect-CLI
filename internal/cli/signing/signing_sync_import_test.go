@@ -212,17 +212,34 @@ func TestSigningSyncImportWritesPullableStore(t *testing.T) {
 		t.Fatalf("pull selection %v does not deliver %s", signingPullRelativePathsFromFiles(selected), identityPath)
 	}
 
-	stdout, stderr, err = runSigningSyncImport(t, args...)
-	if err != nil {
-		t.Fatalf("repeat import: %v\nstderr=%s", err, stderr)
-	}
-	result = asc.SigningSyncImportResult{}
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil || result.PublicationState != "not-needed" || len(result.Files) != 0 {
-		t.Fatalf("repeat import result = %+v (%v)", result, err)
-	}
-	if !reflect.DeepEqual(remoteTree(t, remotePath), tree) {
-		t.Fatal("repeat import changed the destination")
-	}
+	t.Run("repeat import returns an empty files array", func(t *testing.T) {
+		stdout, stderr, err = runSigningSyncImport(t, args...)
+		if err != nil {
+			t.Fatalf("repeat import: %v\nstderr=%s", err, stderr)
+		}
+		result = asc.SigningSyncImportResult{}
+		if err := json.Unmarshal([]byte(stdout), &result); err != nil || result.PublicationState != "not-needed" || len(result.Files) != 0 || result.Files == nil {
+			t.Fatalf("repeat import must return a non-null empty files array: %+v (%v)", result, err)
+		}
+		if !reflect.DeepEqual(remoteTree(t, remotePath), tree) {
+			t.Fatal("repeat import changed the destination")
+		}
+	})
+	t.Run("conflicting profile without an imported key", func(t *testing.T) {
+		conflict := newOpenSSLImportFixture(t, 1)
+		if err := os.RemoveAll(filepath.Join(conflict.dir, "certs")); err != nil {
+			t.Fatal(err)
+		}
+		stdout, _, err := runSigningSyncImport(t, "--source", conflict.dir, "--source-password", importSourcePassword,
+			"--repo", remoteURL, "--password-file", passwordFile, "--confirm", "--output", "json")
+		wantErr := "signing sync import: destination already has a different profile with UUID " + importProfileUUID
+		if err == nil || err.Error() != wantErr {
+			t.Fatalf("error = %v, want %q", err, wantErr)
+		}
+		if stdout != "" || !reflect.DeepEqual(remoteTree(t, remotePath), tree) {
+			t.Fatalf("conflicting profile import emitted success or changed the destination: %s", stdout)
+		}
+	})
 }
 
 func TestSigningSyncImportDryRunListsWithoutDestination(t *testing.T) {
@@ -359,6 +376,15 @@ func TestSigningSyncImportFailuresWriteNothing(t *testing.T) {
 					encryptOpenSSLV2(t, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})))
 			},
 			wantErr: "private key certs/distribution/CERT1.p12 does not match certificate certs/distribution/CERT1.cer",
+		},
+		{
+			name: "unsupported certificate directory",
+			mutate: func(t *testing.T, fixture openSSLImportFixture) {
+				if err := os.Rename(filepath.Join(fixture.dir, "certs", "development"), filepath.Join(fixture.dir, "certs", "developmnt")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantErr: "unsupported certificate directory certs/developmnt",
 		},
 		{
 			name: "symlink escaping the source",

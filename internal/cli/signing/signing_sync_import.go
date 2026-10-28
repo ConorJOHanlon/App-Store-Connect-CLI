@@ -79,7 +79,10 @@ sync store.
 The source uses a certs/<type>/ and profiles/<type>/ layout: each certificate
 is <id>.cer with its private key in <id>.p12 (a PEM private key or a PKCS#12
 file without a password), and each profile is a .mobileprovision or
-.provisionprofile file. Every file is decrypted with --source-password. Each
+.provisionprofile file. Certificate directories are development, distribution,
+enterprise, developer_id_application, developer_id_installer, and
+mac_installer_distribution. The appstore, adhoc, and developer_id aliases also
+map to distribution. Every file is decrypted with --source-password. Each
 certificate must pair with its private key and each profile must carry a
 valid signature, or nothing is imported. Wildcard profiles are skipped with a
 warning because signing sync stores only explicit bundle ID profiles.
@@ -315,6 +318,16 @@ func loadOpenSSLImportSource(root rootfs.Root, password string) ([]openSSLImport
 	keys := make(map[string][]any)
 	var certificates []openSSLImportCertificate
 	for _, relPath := range certFiles {
+		sourceType := path.Base(path.Dir(relPath))
+		var category string
+		switch strings.ToLower(sourceType) {
+		case "development":
+			category = "development"
+		case "distribution", "appstore", "adhoc", "enterprise", "developer_id", "developer_id_application", "developer_id_installer", "mac_installer_distribution":
+			category = "distribution"
+		default:
+			return nil, nil, fmt.Errorf("unsupported certificate directory %s", path.Dir(relPath))
+		}
 		switch strings.ToLower(path.Ext(relPath)) {
 		case ".p12":
 			var parsed []any
@@ -326,11 +339,6 @@ func loadOpenSSLImportSource(root rootfs.Root, password string) ([]openSSLImport
 			var cert *x509.Certificate
 			if err := read(relPath, func(data []byte) bool { cert, err = x509.ParseCertificate(data); return err == nil }); err != nil {
 				return nil, nil, err
-			}
-			sourceType := path.Base(path.Dir(relPath))
-			category := "distribution"
-			if sourceType == "development" {
-				category = "development"
 			}
 			certificates = append(certificates, openSSLImportCertificate{sourcePath: relPath, sourceType: sourceType, category: category, cert: cert, sha256: signingCertificateSHA256(cert)})
 		default:
@@ -510,6 +518,9 @@ func planOpenSSLImportWrites(certificates []openSSLImportCertificate, profiles [
 	plannedProfilePaths := make(map[string]struct{})
 	for _, profile := range profiles {
 		storedProfile, stored := storedProfiles[profile.uuid]
+		if stored && !bytes.Equal(storedProfile.Plaintext, profile.content) {
+			return nil, fmt.Errorf("destination already has a different profile with UUID %s", profile.uuid)
+		}
 		profilePath := canonicalSigningPullPath(storedProfile.RelativePath)
 		if !stored {
 			profileDir := path.Join("profiles", profileDirectoryName(profile.profileType))
@@ -601,7 +612,7 @@ func applyOpenSSLImportWrites(store *signingpkg.GitStore, writes []openSSLImport
 	if err := store.CheckEncryptedRepositoryPaths(openSSLImportWritePaths(writes)); err != nil {
 		return nil, err
 	}
-	var written []string
+	written := make([]string, 0, len(writes))
 	for _, write := range writes {
 		plaintext := write.plaintext
 		same := bytes.Equal
