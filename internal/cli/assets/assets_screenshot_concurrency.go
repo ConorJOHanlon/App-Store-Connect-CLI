@@ -53,6 +53,36 @@ func screenshotUploadConcurrencyFromContext(ctx context.Context) int {
 	return value
 }
 
+type screenshotReservationTurnKey struct{}
+
+// screenshotReservationTurn makes concurrent uploads create their screenshots
+// in file order. App Store Connect appends each screenshot to its set when it
+// is created, so the set keeps file order even if asc stops before the final
+// reorder.
+type screenshotReservationTurn struct {
+	previous <-chan struct{}
+	release  func()
+}
+
+func waitForScreenshotReservationTurn(ctx context.Context) error {
+	turn, ok := ctx.Value(screenshotReservationTurnKey{}).(screenshotReservationTurn)
+	if !ok || turn.previous == nil {
+		return nil
+	}
+	select {
+	case <-turn.previous:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func releaseScreenshotReservationTurn(ctx context.Context) {
+	if turn, ok := ctx.Value(screenshotReservationTurnKey{}).(screenshotReservationTurn); ok {
+		turn.release()
+	}
+}
+
 type screenshotUploadSlot struct {
 	item    asc.AssetUploadResultItem
 	pending screenshotPendingAsset
@@ -142,6 +172,10 @@ func uploadScreenshotsConcurrently(ctx context.Context, client *asc.Client, setI
 // first failed index and deletes the screenshots uploaded after it.
 func runScreenshotUploadPool(ctx context.Context, client *asc.Client, files []string, concurrency int, upload func(context.Context, string) (asc.AssetUploadResultItem, screenshotPendingAsset, error)) ([]screenshotUploadSlot, int, []screenshotPendingAsset, error) {
 	slots := make([]screenshotUploadSlot, len(files))
+	reserved := make([]chan struct{}, len(files))
+	for idx := range reserved {
+		reserved[idx] = make(chan struct{})
+	}
 	work := make(chan int)
 	var wg sync.WaitGroup
 	workerCount := concurrency
@@ -153,11 +187,18 @@ func runScreenshotUploadPool(ctx context.Context, client *asc.Client, files []st
 		go func() {
 			defer wg.Done()
 			for idx := range work {
+				release := sync.OnceFunc(func() { close(reserved[idx]) })
 				if ctx.Err() != nil {
 					slots[idx].err = ctx.Err()
+					release()
 					continue
 				}
-				item, pending, err := upload(ctx, files[idx])
+				turn := screenshotReservationTurn{release: release}
+				if idx > 0 {
+					turn.previous = reserved[idx-1]
+				}
+				item, pending, err := upload(context.WithValue(ctx, screenshotReservationTurnKey{}, turn), files[idx])
+				release()
 				slots[idx] = screenshotUploadSlot{item: item, pending: pending, err: err}
 			}
 		}()
@@ -197,6 +238,10 @@ func UploadScreenshotAssetsConcurrently(ctx context.Context, client *asc.Client,
 	slots, failed, _, cleanupErr := runScreenshotUploadPool(ctx, client, files, defaultScreenshotUploadConcurrency, func(ctx context.Context, filePath string) (asc.AssetUploadResultItem, screenshotPendingAsset, error) {
 		uploadCtx, cancel := uploadContext(ctx)
 		defer cancel()
+		// uploadContext may rebuild from an earlier parent, so carry the turn over.
+		if turn, ok := ctx.Value(screenshotReservationTurnKey{}).(screenshotReservationTurn); ok {
+			uploadCtx = context.WithValue(uploadCtx, screenshotReservationTurnKey{}, turn)
+		}
 		file, err := open(filePath)
 		if err != nil {
 			return asc.AssetUploadResultItem{}, screenshotPendingAsset{}, err
