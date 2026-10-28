@@ -934,13 +934,20 @@ func TestValidateDeepWithoutCachedSessionReturnsStructuredUnverifiedResults(t *t
 	if report.Deep.Summary.Unverified != 3 || report.Deep.Summary.Passed != 2 {
 		t.Fatalf("deep summary = %#v", report.Deep.Summary)
 	}
+	foundPrivacyAdvisory := false
 	for _, check := range report.Checks {
 		if check.ID == "privacy.publish_state.unverified" {
-			t.Fatalf("public privacy advisory was not replaced: %#v", report.Checks)
+			foundPrivacyAdvisory = true
+			if check.Severity != validation.SeverityInfo {
+				t.Fatalf("privacy advisory severity = %q, want info", check.Severity)
+			}
 		}
 		if check.Severity != validation.SeverityInfo && check.Resolution == nil {
 			t.Fatalf("deep-mode failure %q has no classification", check.ID)
 		}
+	}
+	if !foundPrivacyAdvisory || report.Summary.Infos == 0 {
+		t.Fatalf("unverified privacy publication disappeared from report: %#v", report)
 	}
 
 	root = RootCommand("1.2.3")
@@ -1008,6 +1015,11 @@ func TestValidateDeepCachedSessionRunsAllFiveChecksThroughCommand(t *testing.T) 
 	for _, check := range report.Deep.Checks {
 		if check.Status == validation.DeepStatusUnverified || check.Status == validation.DeepStatusBlocked {
 			t.Fatalf("unexpected deep check = %#v", check)
+		}
+	}
+	for _, check := range report.Checks {
+		if check.ID == "privacy.publish_state.unverified" {
+			t.Fatalf("verified publication still has an unverified advisory: %#v", report.Checks)
 		}
 	}
 }
