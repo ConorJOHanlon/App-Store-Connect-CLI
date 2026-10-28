@@ -47,7 +47,7 @@ func fetchReviewDetail(ctx context.Context, client *asc.Client, versionID string
 func fetchReviewInformationSetting(ctx context.Context, client *asc.Client, target metadataSettingTarget) (map[string]string, error) {
 	resp, err := fetchReviewDetail(ctx, client, target.versionID)
 	if err != nil || resp == nil {
-		return map[string]string{}, err
+		return nil, err
 	}
 	attrs := resp.Data.Attributes
 	values := map[string]string{"demoAccountRequired": strconv.FormatBool(attrs.DemoAccountRequired)}
@@ -69,27 +69,27 @@ func fetchReviewInformationSetting(ctx context.Context, client *asc.Client, targ
 	return values, nil
 }
 
-func updateReviewInformationSetting(ctx context.Context, client *asc.Client, target metadataSettingTarget, changed map[string]string) error {
+func updateReviewInformationSetting(ctx context.Context, client *asc.Client, target metadataSettingTarget, changed map[string]string) (string, error) {
 	existing, err := fetchReviewDetail(ctx, client, target.versionID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	payload, err := json.Marshal(metadataSettingObject(reviewInformationFields, changed))
 	if err != nil {
-		return err
+		return "", err
 	}
 	if existing == nil {
 		var attrs asc.AppStoreReviewDetailCreateAttributes
 		if err := json.Unmarshal(payload, &attrs); err != nil {
-			return err
+			return "", err
 		}
 		_, err = client.CreateAppStoreReviewDetail(ctx, target.versionID, &attrs)
-		return err
+		return "create", err
 	}
 	var attrs asc.AppStoreReviewDetailUpdateAttributes
 	if err := json.Unmarshal(payload, &attrs); err != nil {
-		return err
+		return "", err
 	}
 	_, err = client.UpdateAppStoreReviewDetail(ctx, existing.Data.ID, attrs)
-	return err
+	return "update", err
 }

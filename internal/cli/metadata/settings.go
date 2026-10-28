@@ -50,11 +50,13 @@ type metadataSettingScope struct {
 	fileName     string
 	fields       []metadataSettingField
 	needsAppInfo bool
-	fetch        func(ctx context.Context, client *asc.Client, target metadataSettingTarget) (map[string]string, error)
-	update       func(ctx context.Context, client *asc.Client, target metadataSettingTarget, changed map[string]string) error
+	// fetch returns nil values only when the resource does not exist.
+	fetch  func(ctx context.Context, client *asc.Client, target metadataSettingTarget) (map[string]string, error)
+	update func(ctx context.Context, client *asc.Client, target metadataSettingTarget, changed map[string]string) (string, error)
 }
 
 type metadataSettingPlan struct {
+	action  string
 	scope   metadataSettingScope
 	local   map[string]string
 	changed map[string]string
@@ -263,7 +265,10 @@ func encodeMetadataSettingFile(scope metadataSettingScope, values map[string]str
 }
 
 func buildMetadataSettingPlan(scope metadataSettingScope, local, remote map[string]string) (metadataSettingPlan, []PlanItem, []PlanItem) {
-	plan := metadataSettingPlan{scope: scope, local: local, changed: map[string]string{}}
+	plan := metadataSettingPlan{action: "update", scope: scope, local: local, changed: map[string]string{}}
+	if remote == nil {
+		plan.action = "create"
+	}
 	adds := []PlanItem{}
 	updates := []PlanItem{}
 	for _, field := range scope.fields {
@@ -294,8 +299,13 @@ func buildMetadataSettingPlan(scope metadataSettingScope, local, remote map[stri
 
 func applyMetadataSettingPlan(ctx context.Context, client *asc.Client, target metadataSettingTarget, plan metadataSettingPlan) (ApplyAction, error) {
 	scope := plan.scope
+	action := plan.action
 	_, _, err := shared.RunReconciledMutation(ctx, func(requestCtx context.Context) (struct{}, error) {
-		return struct{}{}, scope.update(requestCtx, client, target, plan.changed)
+		actualAction, err := scope.update(requestCtx, client, target, plan.changed)
+		if actualAction != "" {
+			action = actualAction
+		}
+		return struct{}{}, err
 	}, func(readCtx context.Context) (struct{}, bool, error) {
 		remote, err := scope.fetch(readCtx, client, target)
 		return struct{}{}, err == nil && metadataFieldsMatch(remote, plan.changed), err
@@ -304,16 +314,16 @@ func applyMetadataSettingPlan(ctx context.Context, client *asc.Client, target me
 		err = verifyMetadataSetting(ctx, client, target, plan)
 	}
 	if err != nil {
-		err = newMetadataMutationActionError(fmt.Errorf("update %s: %w", scope.name, err))
+		err = newMetadataMutationActionError(fmt.Errorf("%s %s: %w", action, scope.name, err))
 		desired := make(map[string]string, len(plan.changed))
 		for _, field := range scope.fields {
 			if value, ok := plan.changed[field.name]; ok {
 				desired[field.name] = redactMetadataSetting(field, value)
 			}
 		}
-		return failedMetadataAction(scope.name, "", "", "update", "", desired, err), err
+		return failedMetadataAction(scope.name, "", "", action, "", desired, err), err
 	}
-	return successfulMetadataAction(scope.name, "", "", "update", ""), nil
+	return successfulMetadataAction(scope.name, "", "", action, ""), nil
 }
 
 func verifyMetadataSetting(ctx context.Context, client *asc.Client, target metadataSettingTarget, plan metadataSettingPlan) error {

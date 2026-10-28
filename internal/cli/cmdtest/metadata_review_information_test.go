@@ -142,23 +142,57 @@ func TestMetadataReviewInformationPullPlanApplyKeepsPasswordOutOfFilesAndOutput(
 	}
 }
 
-func TestMetadataReviewInformationApplyCreatesMissingDetail(t *testing.T) {
-	setupAuth(t)
-	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+func TestMetadataReviewInformationPlanAndApplyReportMutation(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		detail    map[string]any
+		operation string
+		write     string
+	}{
+		{"missing detail", nil, "create", `POST {"contactEmail":"ada@example.com","contactFirstName":"Ada","demoAccountRequired":false}`},
+		{"existing empty detail", map[string]any{}, "update", `PATCH {"contactEmail":"ada@example.com","contactFirstName":"Ada"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setupAuth(t)
+			t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+			server := &metadataReviewDetailServer{storeOnWrite: true, detail: test.detail}
+			metadataReviewInformationHTTP(t, server)
 
-	server := &metadataReviewDetailServer{storeOnWrite: true}
-	metadataReviewInformationHTTP(t, server)
-
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "review-information.json"), []byte(`{"contactFirstName":"Ada","contactEmail":"ada@example.com","demoAccountRequired":false}`), 0o644); err != nil {
-		t.Fatalf("write review information: %v", err)
-	}
-	stdout := runMetadataReviewCommand(t, []string{
-		"metadata", "apply", "--app", "app-1", "--version", "1.2.3", "--dir", dir, "--include", "review-information", "--output", "json",
-	})
-	want := `POST {"contactEmail":"ada@example.com","contactFirstName":"Ada","demoAccountRequired":false}`
-	if !strings.Contains(stdout, `"applied":true`) || len(server.writes) != 1 || server.writes[0] != want {
-		t.Fatalf("stdout=%s writes=%v, want [%s]", stdout, server.writes, want)
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "review-information.json"), []byte(`{"contactFirstName":"Ada","contactEmail":"ada@example.com","demoAccountRequired":false}`), 0o644); err != nil {
+				t.Fatalf("write review information: %v", err)
+			}
+			common := []string{"--app", "app-1", "--version", "1.2.3", "--dir", dir, "--include", "review-information", "--output", "json"}
+			planStdout := runMetadataReviewCommand(t, append([]string{"metadata", "plan", "--review-dir", filepath.Join(t.TempDir(), "review")}, common...))
+			var planned struct {
+				Plan struct {
+					APICalls []map[string]any `json:"apiCalls"`
+				} `json:"plan"`
+			}
+			if err := json.Unmarshal([]byte(planStdout), &planned); err != nil {
+				t.Fatalf("decode plan: %v", err)
+			}
+			if calls := planned.Plan.APICalls; len(calls) != 1 || calls[0]["operation"] != test.operation || calls[0]["scope"] != "review-information" || calls[0]["count"] != float64(1) {
+				t.Errorf("planned API calls = %v, want one review-information %s", calls, test.operation)
+			}
+			if len(server.writes) != 0 {
+				t.Fatalf("plan sent writes: %v", server.writes)
+			}
+			stdout := runMetadataReviewCommand(t, append([]string{"metadata", "apply"}, common...))
+			var applied struct {
+				Applied bool             `json:"applied"`
+				Actions []map[string]any `json:"actions"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &applied); err != nil {
+				t.Fatalf("decode apply receipt: %v", err)
+			}
+			if !applied.Applied || len(server.writes) != 1 || server.writes[0] != test.write {
+				t.Fatalf("stdout=%s writes=%v, want [%s]", stdout, server.writes, test.write)
+			}
+			if actions := applied.Actions; len(actions) != 1 || actions[0]["action"] != test.operation || actions[0]["scope"] != "review-information" || actions[0]["status"] != "succeeded" {
+				t.Errorf("apply actions = %v, want one successful review-information %s", actions, test.operation)
+			}
+		})
 	}
 }
 

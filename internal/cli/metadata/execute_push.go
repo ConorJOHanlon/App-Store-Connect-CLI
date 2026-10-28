@@ -295,7 +295,7 @@ func ExecutePushWithWarnings(ctx context.Context, opts PushExecutionOptions) (Pu
 		result.Updates = append(result.Updates, updates...)
 		if len(plan.changed) > 0 {
 			settingPlans = append(settingPlans, plan)
-			settingCalls = append(settingCalls, PlanAPICall{Operation: "update", Scope: scope.name, Count: 1})
+			settingCalls = append(settingCalls, PlanAPICall{Operation: plan.action, Scope: scope.name, Count: 1})
 		}
 	}
 	sortPlanItems(result.Adds)
