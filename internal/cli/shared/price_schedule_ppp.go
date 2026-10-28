@@ -381,14 +381,14 @@ func scheduledPPPPrices(rows []asc.SubscriptionPricingDeriveRow, startDate strin
 		if row.Status == "skipped" {
 			target = row.CurrentTargetPointID
 		}
-		if startDate == "" || row.CurrentTargetPointID == "" || row.CurrentTargetPointID == target {
+		if startDate == "" || row.CurrentTargetPointID == target {
 			prices = append(prices, ScheduledPricePoint{PricePointID: target})
 			continue
 		}
-		prices = append(prices,
-			ScheduledPricePoint{PricePointID: row.CurrentTargetPointID, EndDate: startDate},
-			ScheduledPricePoint{PricePointID: target, StartDate: startDate},
-		)
+		if row.CurrentTargetPointID != "" {
+			prices = append(prices, ScheduledPricePoint{PricePointID: row.CurrentTargetPointID, EndDate: startDate})
+		}
+		prices = append(prices, ScheduledPricePoint{PricePointID: target, StartDate: startDate})
 	}
 	return prices
 }

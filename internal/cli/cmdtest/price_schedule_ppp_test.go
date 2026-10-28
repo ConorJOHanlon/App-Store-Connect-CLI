@@ -160,6 +160,7 @@ func TestPriceSchedulePPPPlansAppliesFullSetAndVerifies(t *testing.T) {
 		wantPost      []string
 		wantStatuses  string
 		wantVerified  string
+		missingBase   bool
 	}{
 		{
 			name:          "dry run plans indexed territories and skips TWN at its current price",
@@ -209,6 +210,17 @@ func TestPriceSchedulePPPPlansAppliesFullSetAndVerifies(t *testing.T) {
 			wantVerified:  "completed 3",
 		},
 		{
+			name:          "start date also defers a newly priced base territory",
+			surface:       iapScheduleSurface,
+			args:          []string{"--confirm", "--start-date", "2099-01-01"},
+			equalizations: equalized,
+			readback:      applied,
+			wantPost:      []string{"base USA", "ind-199  2099-01-01", "ind-115 2099-01-01", "twn-150", "usa-499 2099-01-01"},
+			wantStatuses:  "IND verified ind-199>ind-115, TWN skipped ind:twn-150, USA verified >usa-499",
+			wantVerified:  "completed 3",
+			missingBase:   true,
+		},
+		{
 			name:          "readback mismatch fails verification",
 			surface:       iapScheduleSurface,
 			args:          []string{"--confirm"},
@@ -224,7 +236,13 @@ func TestPriceSchedulePPPPlansAppliesFullSetAndVerifies(t *testing.T) {
 			setupAuth(t)
 			t.Setenv("ASC_APP_ID", "")
 			var posts []string
-			installDefaultTransport(t, scheduleTransport(t, test.surface, test.equalizations, test.readback, &posts))
+			transport := scheduleTransport(t, test.surface, test.equalizations, test.readback, &posts)
+			installDefaultTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if test.missingBase && req.Method == http.MethodGet && req.URL.Path == test.surface.pricesPath+"manualPrices" && len(posts) == 0 {
+					return jsonResponse(http.StatusOK, schedulePricesBody(test.surface, []schedulePoint{{"IND", "ind-199", "199"}, {"TWN", "twn-150", "150"}}))
+				}
+				return transport(req)
+			}))
 
 			args := append(append(append([]string{}, test.surface.command...), "--base-price", "4.99", "--output", "json"), test.args...)
 			stdout, stderr, err := runRootCommand(t, args)
