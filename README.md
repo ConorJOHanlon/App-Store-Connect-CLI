@@ -345,11 +345,9 @@ free one. The private Apple endpoints can change without notice, so an
 unavailable or changed response is `unverified`, not a false blocker. Add
 `--strict` if CI must fail when a requested deep check can't be verified.
 
-This lint intentionally does not judge platform names, roadmap language, or
-beta/demo wording because those phrases can be legitimate product copy and
-cannot be classified reliably offline. It also leaves shorter Lorem Ipsum
-product wording and ordinary localized `TODO` copy without marker punctuation
-unflagged; only template-like residue is reported.
+Placeholder checks leave shorter Lorem Ipsum product wording and ordinary
+localized `TODO` copy without marker punctuation unflagged; only template-like
+residue is reported.
 
 ### Review status and blockers
 
