@@ -139,6 +139,9 @@ func uploadScreenshotsWithConfig[T any](ctx context.Context, cfg screenshotUploa
 	}
 	if strings.TrimSpace(cfg.ReplaceCommand) == "" {
 		cfg.ReplaceCommand = "--replace --confirm"
+		if cfg.DryRun {
+			cfg.ReplaceCommand = "--replace"
+		}
 	}
 
 	sourceRootPath := ""
