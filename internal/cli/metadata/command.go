@@ -33,7 +33,7 @@ Opt-in scopes (add to --include for pull, plan, and apply):
 ` + metadataSettingsHelp("  ", true) + `
 
 Not yet included in this group:
-  - categories, review information, screenshots
+  - review information, screenshots
 
 Note: copyright is managed via "asc versions create --copyright" or "asc versions update --copyright".
 
