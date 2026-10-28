@@ -257,7 +257,7 @@ func updateAppInfoLocalization(ctx context.Context, p updateAppInfoParams) error
 			}
 		}
 		if localizationID == "" {
-			return fmt.Errorf("localizations update: no existing localization found for locale %q", p.locale)
+			return fmt.Errorf("localizations update: no existing localization found for locale %q; create it with asc apps rename --app %q --app-info %q --locale %q --name \"APP_NAME\", then retry this update", p.locale, resolvedAppID, appInfo, p.locale)
 		}
 	}
 
