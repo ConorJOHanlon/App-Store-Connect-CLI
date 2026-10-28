@@ -302,7 +302,7 @@ func ExecutePushWithWarnings(ctx context.Context, opts PushExecutionOptions) (Pu
 				for field, value := range localSettings[i] {
 					desired[field] = value
 				}
-				if err := scope.validate(desired); err != nil {
+				if err := scope.validate(desired, true); err != nil {
 					return PushPlanResult{}, warnings, shared.UsageErrorf("%s: invalid %s settings: %v", errorPrefix, scope.name, err)
 				}
 			}

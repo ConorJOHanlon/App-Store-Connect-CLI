@@ -56,12 +56,13 @@ var ageRatingSettingScope = metadataSettingScope{
 	update:       updateAgeRatingSetting,
 }
 
-func validateAgeRatingSetting(values map[string]string) error {
+func validateAgeRatingSetting(values map[string]string, complete bool) error {
 	if value, ok := values["developerAgeRatingInfoUrl"]; ok {
 		if parsed, err := url.ParseRequestURI(value); err != nil || !parsed.IsAbs() {
 			return fmt.Errorf("developerAgeRatingInfoUrl must be a valid URL")
 		}
 	}
+	var missingDependency error
 	for _, dependency := range [][2]string{
 		{"socialMedia", "userGeneratedContent"},
 		{"socialMediaAgeRestricted", "ageAssurance"},
@@ -71,8 +72,11 @@ func validateAgeRatingSetting(values map[string]string) error {
 		if values[dependency[0]] == "true" && values[dependency[1]] == "false" {
 			return fmt.Errorf("%s true cannot be combined with %s false", dependency[0], dependency[1])
 		}
+		if complete && values[dependency[0]] == "true" && values[dependency[1]] != "true" && missingDependency == nil {
+			missingDependency = fmt.Errorf("%s true requires %s true", dependency[0], dependency[1])
+		}
 	}
-	return nil
+	return missingDependency
 }
 
 func fetchAgeRatingDeclaration(ctx context.Context, client *asc.Client, appInfoID string) (*asc.AgeRatingDeclarationResponse, error) {

@@ -198,7 +198,8 @@ func TestMetadataAgeRatingValidatesResultingStateBeforeMutation(t *testing.T) {
 		{name: "remote social media false", local: `{"socialMediaAgeRestricted":true}`, remote: map[string]any{"socialMedia": false}, wantErr: "socialMediaAgeRestricted true cannot be combined with socialMedia false"},
 		{name: "local prerequisite disabled", local: `{"userGeneratedContent":false}`, remote: map[string]any{"socialMedia": true, "userGeneratedContent": true}, wantErr: "socialMedia true cannot be combined with userGeneratedContent false"},
 		{name: "local prerequisite overrides remote", local: `{"socialMedia":true,"userGeneratedContent":true,"developerAgeRatingInfoUrl":"urn:example:age-rating"}`, remote: map[string]any{"userGeneratedContent": false}},
-		{name: "unknown prerequisite stays unknown", local: `{"socialMedia":true}`, remote: map[string]any{"userGeneratedContent": nil}},
+		{name: "remote prerequisite unknown", local: `{"socialMedia":true}`, remote: map[string]any{"userGeneratedContent": nil}, wantErr: "socialMedia true requires userGeneratedContent true"},
+		{name: "remote prerequisite already true", local: `{"socialMedia":true}`, remote: map[string]any{"userGeneratedContent": true}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var patches []map[string]any
