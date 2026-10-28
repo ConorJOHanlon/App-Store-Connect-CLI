@@ -56,7 +56,7 @@ func appPPPSurface(client *asc.Client, appID string) shared.PriceSchedulePPPSurf
 			}
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
-			resolved, err := fetchResolvedAppSchedulePrices(requestCtx, client, schedule.Data.ID, "manual", 200, "", at)
+			resolved, err := fetchResolvedAppSchedulePrices(requestCtx, client, schedule.Data.ID, "manual", 200, "", at, true)
 			if isAppPriceScheduleNotConfigured(err) {
 				return nil, nil
 			}

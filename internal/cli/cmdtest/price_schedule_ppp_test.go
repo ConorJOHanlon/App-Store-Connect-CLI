@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
 type scheduleSurfaceFixture struct {
@@ -274,5 +277,137 @@ func TestPriceSchedulePPPPlansAppliesFullSetAndVerifies(t *testing.T) {
 				t.Fatalf("posted prices = %q, want %q", got, strings.Join(test.wantPost, " | "))
 			}
 		})
+	}
+}
+
+func TestPriceSchedulePPPRejectsUnresolvedCurrentPricesOnLaterPages(t *testing.T) {
+	for _, surface := range []scheduleSurfaceFixture{appScheduleSurface, iapScheduleSurface} {
+		for _, missingRelationship := range []string{"included point", "territory", "price point"} {
+			t.Run(surface.priceType+"/"+missingRelationship, func(t *testing.T) {
+				setupAuth(t)
+				t.Setenv("ASC_APP_ID", "")
+				var posts []string
+				readback := []schedulePoint{{"IND", "ind-115", "115"}, {"TWN", "twn-170", "170"}, {"USA", "usa-499", "4.99"}}
+				transport := scheduleTransport(t, surface, []schedulePoint{{"IND", "ind-499", "499"}}, readback, &posts)
+				pages := 0
+				installDefaultTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					if req.Method == http.MethodGet && req.URL.Path == surface.pricesPath+"manualPrices" && len(posts) == 0 {
+						pages++
+						if req.URL.Query().Get("include") != surface.pointRel+",territory" {
+							t.Fatalf("missing includes on inventory page %d: %s", pages, req.URL.RawQuery)
+						}
+						if pages == 1 {
+							body := schedulePricesBody(surface, []schedulePoint{{"IND", "ind-199", "199"}, {"USA", "usa-499", "4.99"}})
+							next := "https://api.appstoreconnect.apple.com" + surface.pricesPath + "manualPrices?cursor=Mg"
+							return jsonResponse(http.StatusOK, strings.Replace(body, `"links":{}`, `"links":{"next":"`+next+`"}`, 1))
+						}
+						if pages != 2 || req.URL.Query().Get("cursor") != "Mg" {
+							t.Fatalf("unexpected inventory page: %s", req.URL.String())
+						}
+						// Apple may omit included resources; the manual price still exists.
+						body := fmt.Sprintf(`{"data":[{"type":%q,"id":"price-twn-150","attributes":{"manual":true},"relationships":{"territory":{"data":{"type":"territories","id":"TWN"}},%q:{"data":{"type":%q,"id":"twn-150"}}}}],"links":{}}`, surface.priceType, surface.pointRel, surface.pointType)
+						switch missingRelationship {
+						case "territory":
+							body = strings.Replace(body, `"territory":{"data":{"type":"territories","id":"TWN"}},`, "", 1)
+						case "price point":
+							body = strings.Replace(body, fmt.Sprintf(`,%q:{"data":{"type":%q,"id":"twn-150"}}`, surface.pointRel, surface.pointType), "", 1)
+						}
+						return jsonResponse(http.StatusOK, body)
+					}
+					if req.Method == http.MethodGet && req.URL.Path == surface.ladderPath {
+						// Permit the former incomplete plan to reach its POST so the
+						// regression demonstrates the unintended full replacement.
+						return jsonResponse(http.StatusOK, pricePointsBody(surface, []schedulePoint{{"IND", "ind-199", "199"}, {"IND", "ind-115", "115"}, {"USA", "usa-499", "4.99"}}))
+					}
+					return transport(req)
+				}))
+
+				args := append(append([]string{}, surface.command...), "--base-price", "4.99", "--confirm", "--output", "json")
+				stdout, _, err := runRootCommand(t, args)
+				if pages != 2 {
+					t.Fatalf("inventory pages = %d, want 2", pages)
+				}
+				if len(posts) != 0 {
+					t.Fatalf("incomplete inventory caused %d schedule writes: %v; error=%v; output=%s", len(posts), postedManualPrices(t, surface, posts[0]), err, stdout)
+				}
+				if err == nil || !strings.Contains(err.Error(), `cannot resolve active price "price-twn-150"`) {
+					t.Fatalf("error = %v, want unresolved current price", err)
+				}
+				if stdout != "" {
+					t.Fatalf("unexpected successful result: %s", stdout)
+				}
+			})
+		}
+	}
+}
+
+func TestPriceSchedulePPPIgnoresUnresolvedSupersededPrices(t *testing.T) {
+	for _, surface := range []scheduleSurfaceFixture{appScheduleSurface, iapScheduleSurface} {
+		for _, test := range []struct {
+			name            string
+			automatic       bool
+			unresolvedFirst bool
+		}{
+			{name: "automatic overridden by manual", automatic: true},
+			{name: "older manual before winner", unresolvedFirst: true},
+			{name: "older manual after winner"},
+		} {
+			t.Run(surface.priceType+"/"+test.name, func(t *testing.T) {
+				setupAuth(t)
+				t.Setenv("ASC_APP_ID", "")
+				t.Cleanup(shared.SetPricingNowForTesting(func() time.Time {
+					return time.Date(2026, time.October, 1, 12, 0, 0, 0, time.UTC)
+				}))
+				var posts []string
+				readback := []schedulePoint{{"IND", "ind-115", "115"}, {"TWN", "twn-150", "150"}, {"USA", "usa-499", "4.99"}}
+				transport := scheduleTransport(t, surface, []schedulePoint{{"IND", "ind-499", "499"}}, readback, &posts)
+				unresolved := fmt.Sprintf(`{"type":%q,"id":"unresolved-old","attributes":{"manual":%t},"relationships":{"territory":{"data":{"type":"territories","id":"USA"}},%q:{"data":{"type":%q,"id":"usa-old"}}}}`, surface.priceType, !test.automatic, surface.pointRel, surface.pointType)
+				installDefaultTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					if req.Method == http.MethodGet && req.URL.Path == surface.pricesPath+"automaticPrices" && test.automatic {
+						return jsonResponse(http.StatusOK, `{"data":[`+unresolved+`],"links":{}}`)
+					}
+					resp, err := transport(req)
+					if err != nil || req.Method != http.MethodGet || req.URL.Path != surface.pricesPath+"manualPrices" || test.automatic {
+						return resp, err
+					}
+					raw, err := io.ReadAll(resp.Body)
+					_ = resp.Body.Close()
+					if err != nil {
+						return nil, err
+					}
+					body := strings.ReplaceAll(string(raw), `"manual":true`, `"manual":true,"startDate":"2025-01-01"`)
+					if test.unresolvedFirst {
+						body = strings.Replace(body, `"data":[`, `"data":[`+unresolved+`,`, 1)
+					} else {
+						body = strings.Replace(body, `],"included":`, `,`+unresolved+`],"included":`, 1)
+					}
+					return jsonResponse(resp.StatusCode, body)
+				}))
+
+				args := append(append([]string{}, surface.command...), "--base-price", "4.99", "--confirm", "--output", "json")
+				stdout, _, err := runRootCommand(t, args)
+				if err != nil {
+					t.Fatalf("resolved effective schedule was rejected: %v", err)
+				}
+				if len(posts) != 1 {
+					t.Fatalf("schedule writes = %d, want 1", len(posts))
+				}
+				if got := strings.Join(postedManualPrices(t, surface, posts[0]), " | "); got != "base USA | ind-115 | twn-150 | usa-499" {
+					t.Fatalf("replacement prices = %q", got)
+				}
+				var result struct {
+					Verification struct {
+						Status   string `json:"status"`
+						Verified int    `json:"verified"`
+					} `json:"verification"`
+				}
+				if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+					t.Fatalf("parse output: %v", err)
+				}
+				if result.Verification.Status != "completed" || result.Verification.Verified != 3 {
+					t.Fatalf("verification = %+v, want completed for all three territories", result.Verification)
+				}
+			})
+		}
 	}
 }

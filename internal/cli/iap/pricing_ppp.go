@@ -65,7 +65,7 @@ func iapPPPSurface(client *asc.Client, iapID string) shared.PriceSchedulePPPSurf
 			}
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
-			resolved, err := fetchResolvedIAPSchedulePrices(requestCtx, client, schedule.Data.ID, "manual", 200, "", at)
+			resolved, err := fetchResolvedIAPSchedulePrices(requestCtx, client, schedule.Data.ID, "manual", 200, "", at, true)
 			if err != nil {
 				return nil, err
 			}
