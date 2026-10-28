@@ -521,6 +521,7 @@ func registerAllOutputRenderers() {
 	registerRows(appStoreVersionPromotionCreateRows)
 	registerRows(appStoreVersionPhasedReleaseRows)
 	registerRows(appStoreVersionPhasedReleaseDeleteResultRows)
+	registerRows(phasedReleaseGuardResultRows)
 	registerRows(buildBetaGroupsUpdateRows)
 	registerRows(buildIndividualTestersUpdateRows)
 	registerRows(buildUploadDeleteResultRows)
