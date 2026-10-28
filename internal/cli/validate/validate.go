@@ -83,6 +83,7 @@ Checks:
   - Screenshot presence and size compatibility
   - Required iPad screenshots for builds that run on iPad (--ipa)
   - Subscription review readiness and promotional image guidance
+  - Custom product page search keywords missing from this version's keywords
   - Age rating completeness
 
 Deep validation:
