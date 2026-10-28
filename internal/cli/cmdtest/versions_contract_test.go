@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -133,8 +134,8 @@ func TestVersionsViewResolvesVersionFromAppAndVersionString(t *testing.T) {
 	if result.ID != "version-1" || result.VersionString != "1.2.3" || result.Platform != "IOS" {
 		t.Fatalf("unexpected result: %#v", result)
 	}
-	if stderr != "" {
-		t.Fatalf("stderr = %q, want empty", stderr)
+	if stderr != versionsViewSummaryDeprecationWarning {
+		t.Fatalf("stderr = %q, want %q", stderr, versionsViewSummaryDeprecationWarning)
 	}
 	wantRequests := []string{
 		"GET /v1/apps/app-1/appStoreVersions",
@@ -439,8 +440,8 @@ func TestVersionsViewPreservesDownloadable(t *testing.T) {
 					t.Fatalf("run error: %v", err)
 				}
 			})
-			if stderr != "" {
-				t.Fatalf("stderr = %q, want empty", stderr)
+			if stderr != versionsViewSummaryDeprecationWarning {
+				t.Fatalf("stderr = %q, want %q", stderr, versionsViewSummaryDeprecationWarning)
 			}
 
 			var payload map[string]any
@@ -458,5 +459,109 @@ func TestVersionsViewPreservesDownloadable(t *testing.T) {
 				t.Fatalf("downloadable = %v, want %v", value, test.wantValue)
 			}
 		})
+	}
+}
+
+const versionsViewSummaryDeprecationWarning = "Warning: `asc versions view` without --include prints a reduced summary; the next major release prints Apple's appStoreVersions envelope instead. Pass --include to get the envelope now: --include build replaces --include-build, --include appStoreVersionSubmission replaces --include-submission.\n"
+
+func TestVersionsReadsPrintAppleEnvelope(t *testing.T) {
+	const attributes = `{"platform":"IOS","versionString":"2.5.1","appStoreState":"READY_FOR_SALE","appVersionState":"READY_FOR_DISTRIBUTION","copyright":"2026 Example","reviewType":"APP_STORE","releaseType":"AFTER_APPROVAL","earliestReleaseDate":null,"usesIdfa":null,"downloadable":true,"createdDate":"2026-10-24T05:58:07-07:00"}`
+	const resource = `{"type":"appStoreVersions","id":"version-1","attributes":` + attributes + `,"relationships":{"build":{"data":{"type":"builds","id":"build-1"}}}}`
+	tests := []struct {
+		name       string
+		args       []string
+		path       string
+		body       string
+		wantStdout string
+		wantStderr string
+	}{
+		{
+			name:       "view without include keeps the deprecated summary",
+			args:       []string{"versions", "view", "--version-id", "version-1", "--output", "json"},
+			path:       "/v1/appStoreVersions/version-1",
+			body:       `{"data":` + resource + `,"links":{"self":"https://example.test/v1/appStoreVersions/version-1"}}`,
+			wantStdout: `{"id":"version-1","versionString":"2.5.1","platform":"IOS","state":"READY_FOR_DISTRIBUTION","downloadable":true}`,
+			wantStderr: versionsViewSummaryDeprecationWarning,
+		},
+		{
+			name: "view with include",
+			args: []string{"versions", "view", "--version-id", "version-1", "--include", "build", "--output", "json"},
+			path: "/v1/appStoreVersions/version-1",
+			body: `{"data":` + resource + `,"included":[{"type":"builds","id":"build-1","attributes":{"version":"42"}}],"links":{"self":"https://example.test/v1/appStoreVersions/version-1"}}`,
+		},
+		{
+			name:       "view table output has no envelope warning",
+			args:       []string{"versions", "view", "--version-id", "version-1", "--output", "table"},
+			path:       "/v1/appStoreVersions/version-1",
+			body:       `{"data":` + resource + `}`,
+			wantStdout: "2.5.1",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			setupAuth(t)
+			t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+			stubTransport(t, func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodGet || req.URL.Path != test.path {
+					t.Fatalf("request = %s %s, want GET %s", req.Method, req.URL.Path, test.path)
+				}
+				return jsonResponse(http.StatusOK, test.body)
+			})
+
+			root := RootCommand("test")
+			root.FlagSet.SetOutput(io.Discard)
+			stdout, stderr := captureOutput(t, func() {
+				if err := root.Parse(test.args); err != nil {
+					t.Fatalf("parse error: %v", err)
+				}
+				if err := root.Run(context.Background()); err != nil {
+					t.Fatalf("run error: %v", err)
+				}
+			})
+
+			switch {
+			case slices.Contains(test.args, "table"):
+				if !strings.Contains(stdout, test.wantStdout) {
+					t.Fatalf("stdout = %q, want table containing %q", stdout, test.wantStdout)
+				}
+			case test.wantStdout == "":
+				assertAnalyticsViewJSONEqual(t, stdout, test.body)
+			default:
+				assertAnalyticsViewJSONEqual(t, stdout, test.wantStdout)
+			}
+			if stderr != test.wantStderr {
+				t.Fatalf("stderr = %q, want %q", stderr, test.wantStderr)
+			}
+		})
+	}
+}
+
+func TestVersionsPhasedReleaseViewPrintsNullData(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+
+	const body = `{"data":null,"links":{"self":"https://example.test/v1/appStoreVersions/version-1/appStoreVersionPhasedRelease"}}`
+	stubTransport(t, func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodGet || req.URL.Path != "/v1/appStoreVersions/version-1/appStoreVersionPhasedRelease" {
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+		}
+		return jsonResponse(http.StatusOK, body)
+	})
+
+	root := RootCommand("test")
+	root.FlagSet.SetOutput(io.Discard)
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"versions", "phased-release", "view", "--version-id", "version-1", "--output", "json"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	assertAnalyticsViewJSONEqual(t, stdout, body)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 }
