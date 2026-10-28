@@ -127,6 +127,11 @@ Examples:
 			if !*confirm && !*dryRun {
 				return shared.UsageError("--confirm is required to write the destination store (or pass --dry-run to preview)")
 			}
+			if providedSigningSyncFlags(fs)["source-branch"] {
+				if info, err := os.Stat(sourceLocation); err == nil && info.IsDir() {
+					return shared.UsageError("--source-branch is only supported with a Git URL source")
+				}
+			}
 			storageSelection, err := parseSigningSyncStorage(fs, storageFlags, *repoURL, *branch)
 			if err != nil {
 				return err

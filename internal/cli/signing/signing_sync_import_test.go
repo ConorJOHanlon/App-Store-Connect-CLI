@@ -437,6 +437,7 @@ func TestSigningSyncImportFlagValidation(t *testing.T) {
 		{args: []string{"--source", ".", "--dry-run"}, wantErr: "--source-password is required"},
 		{args: []string{"--source", ".", "--source-password", "x", "--repo", "r"}, wantErr: "--confirm is required to write the destination store (or pass --dry-run to preview)"},
 		{args: []string{"--source", ".", "--source-password", "x", "--repo", "r", "--confirm", "--dry-run"}, wantErr: "--confirm and --dry-run are mutually exclusive"},
+		{args: []string{"--source", ".", "--source-password", "x", "--repo", "r", "--source-branch", "master", "--dry-run"}, wantErr: "--source-branch is only supported with a Git URL source"},
 	}
 	for _, test := range tests {
 		t.Run(test.wantErr, func(t *testing.T) {
