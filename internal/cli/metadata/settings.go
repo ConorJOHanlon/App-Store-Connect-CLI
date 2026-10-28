@@ -40,6 +40,7 @@ type metadataSettingScope struct {
 	fileName     string
 	fields       []metadataSettingField
 	needsAppInfo bool
+	validate     func(map[string]string) error
 	fetch        func(ctx context.Context, client *asc.Client, target metadataSettingTarget) (map[string]string, error)
 	update       func(ctx context.Context, client *asc.Client, target metadataSettingTarget, changed map[string]string) error
 }
@@ -143,6 +144,11 @@ func readMetadataSettingFile(dir string, scope metadataSettingScope) (map[string
 			return nil, shared.UsageErrorf("invalid metadata schema in %s: %v", path, err)
 		}
 		values[field.name] = value
+	}
+	if scope.validate != nil {
+		if err := scope.validate(values); err != nil {
+			return nil, shared.UsageErrorf("invalid metadata schema in %s: %v", path, err)
+		}
 	}
 	return values, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
@@ -50,8 +51,28 @@ var ageRatingSettingScope = metadataSettingScope{
 	fileName:     "age-rating.json",
 	fields:       ageRatingFields,
 	needsAppInfo: true,
+	validate:     validateAgeRatingSetting,
 	fetch:        fetchAgeRatingSetting,
 	update:       updateAgeRatingSetting,
+}
+
+func validateAgeRatingSetting(values map[string]string) error {
+	if value, ok := values["developerAgeRatingInfoUrl"]; ok {
+		if parsed, err := url.ParseRequestURI(value); err != nil || !parsed.IsAbs() {
+			return fmt.Errorf("developerAgeRatingInfoUrl must be a valid URL")
+		}
+	}
+	for _, dependency := range [][2]string{
+		{"socialMedia", "userGeneratedContent"},
+		{"socialMediaAgeRestricted", "ageAssurance"},
+		{"socialMediaAgeRestricted", "socialMedia"},
+		{"socialMediaAgeRestricted", "userGeneratedContent"},
+	} {
+		if values[dependency[0]] == "true" && values[dependency[1]] == "false" {
+			return fmt.Errorf("%s true cannot be combined with %s false", dependency[0], dependency[1])
+		}
+	}
+	return nil
 }
 
 func fetchAgeRatingDeclaration(ctx context.Context, client *asc.Client, appInfoID string) (*asc.AgeRatingDeclarationResponse, error) {

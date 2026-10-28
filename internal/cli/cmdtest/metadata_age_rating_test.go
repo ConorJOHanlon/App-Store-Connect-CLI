@@ -137,11 +137,6 @@ func TestMetadataAgeRatingApplyFailsWhenReadBackDiffers(t *testing.T) {
 func TestMetadataAgeRatingRejectsInvalidValuesBeforeRequests(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
-	withMetadataReviewHTTP(t, func(req *http.Request) (*http.Response, error) {
-		t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
-		return nil, nil
-	})
-
 	tests := []struct {
 		name    string
 		body    string
@@ -149,19 +144,114 @@ func TestMetadataAgeRatingRejectsInvalidValuesBeforeRequests(t *testing.T) {
 	}{
 		{name: "boolean as string", body: `{"gambling":"true"}`, wantErr: "gambling must be a boolean"},
 		{name: "unknown enum value", body: `{"violenceRealistic":"SOMETIMES"}`, wantErr: "violenceRealistic must be one of NONE, INFREQUENT_OR_MILD"},
+		{name: "invalid URL", body: `{"developerAgeRatingInfoUrl":"not a URL"}`, wantErr: "developerAgeRatingInfoUrl must be a valid URL"},
+		{name: "relative URL", body: `{"developerAgeRatingInfoUrl":"/age-rating"}`, wantErr: "developerAgeRatingInfoUrl must be a valid URL"},
+		{name: "social media without user content", body: `{"socialMedia":true,"userGeneratedContent":false}`, wantErr: "socialMedia true cannot be combined with userGeneratedContent false"},
+		{name: "restricted social media without age assurance", body: `{"socialMediaAgeRestricted":true,"ageAssurance":false}`, wantErr: "socialMediaAgeRestricted true cannot be combined with ageAssurance false"},
+		{name: "restricted social media without social media", body: `{"socialMediaAgeRestricted":true,"socialMedia":false}`, wantErr: "socialMediaAgeRestricted true cannot be combined with socialMedia false"},
+		{name: "restricted social media without user content", body: `{"socialMediaAgeRestricted":true,"userGeneratedContent":false}`, wantErr: "socialMediaAgeRestricted true cannot be combined with userGeneratedContent false"},
 	}
 	for _, test := range tests {
+		for _, command := range []string{"plan", "apply"} {
+			t.Run(test.name+"/"+command, func(t *testing.T) {
+				withMetadataReviewHTTP(t, func(req *http.Request) (*http.Response, error) {
+					t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+					return nil, nil
+				})
+				dir := t.TempDir()
+				versionDir := filepath.Join(dir, "version", "1.2.3")
+				if err := os.MkdirAll(versionDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(versionDir, "en-US.json"), []byte(`{"description":"new description"}`), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "age-rating.json"), []byte(test.body), 0o644); err != nil {
+					t.Fatalf("write age rating: %v", err)
+				}
+				args := []string{
+					"metadata", command, "--app", "app-1", "--version", "1.2.3", "--dir", dir, "--include", "localizations,age-rating",
+					"--review-dir", filepath.Join(t.TempDir(), "review"),
+				}
+				if command == "apply" {
+					args = append(args, "--confirm")
+				}
+				stdout, stderr, runErr := runMetadataReviewCommandRaw(t, args)
+				if !errors.Is(runErr, flag.ErrHelp) || stdout != "" || !strings.Contains(stderr, test.wantErr) {
+					t.Fatalf("err=%v stdout=%q stderr=%q", runErr, stdout, stderr)
+				}
+			})
+		}
+	}
+}
+
+func TestMetadataAgeRatingValidatesResultingStateBeforeMutation(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+	for _, test := range []struct {
+		name    string
+		local   string
+		remote  map[string]any
+		wantErr string
+	}{
+		{name: "remote user content false", local: `{"socialMedia":true}`, remote: map[string]any{"userGeneratedContent": false}, wantErr: "socialMedia true cannot be combined with userGeneratedContent false"},
+		{name: "remote social media false", local: `{"socialMediaAgeRestricted":true}`, remote: map[string]any{"socialMedia": false}, wantErr: "socialMediaAgeRestricted true cannot be combined with socialMedia false"},
+		{name: "local prerequisite disabled", local: `{"userGeneratedContent":false}`, remote: map[string]any{"socialMedia": true, "userGeneratedContent": true}, wantErr: "socialMedia true cannot be combined with userGeneratedContent false"},
+		{name: "local prerequisite overrides remote", local: `{"socialMedia":true,"userGeneratedContent":true,"developerAgeRatingInfoUrl":"urn:example:age-rating"}`, remote: map[string]any{"userGeneratedContent": false}},
+		{name: "unknown prerequisite stays unknown", local: `{"socialMedia":true}`, remote: map[string]any{"userGeneratedContent": nil}},
+	} {
 		t.Run(test.name, func(t *testing.T) {
+			var patches []map[string]any
+			metadataAgeRatingHTTP(t, test.remote, true, &patches)
+			transport := http.DefaultTransport
+			mutations := 0
+			withMetadataReviewHTTP(t, func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodGet {
+					mutations++
+				}
+				switch req.Method + " " + req.URL.Path {
+				case "GET /v1/appStoreVersions/version-1/appStoreVersionLocalizations":
+					return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"appStoreVersionLocalizations","id":"loc-1","attributes":{"locale":"en-US","description":"old description"}}]}`), nil
+				case "PATCH /v1/appStoreVersionLocalizations/loc-1":
+					return jsonHTTPResponse(http.StatusOK, `{"data":{"type":"appStoreVersionLocalizations","id":"loc-1","attributes":{"locale":"en-US","description":"new description"}}}`), nil
+				default:
+					return transport.RoundTrip(req)
+				}
+			})
 			dir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(dir, "age-rating.json"), []byte(test.body), 0o644); err != nil {
-				t.Fatalf("write age rating: %v", err)
+			versionDir := filepath.Join(dir, "version", "1.2.3")
+			if err := os.MkdirAll(versionDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(versionDir, "en-US.json"), []byte(`{"description":"new description"}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "age-rating.json"), []byte(test.local), 0o644); err != nil {
+				t.Fatal(err)
 			}
 			stdout, stderr, runErr := runMetadataReviewCommandRaw(t, []string{
-				"metadata", "plan", "--app", "app-1", "--version", "1.2.3", "--dir", dir, "--include", "age-rating",
-				"--review-dir", filepath.Join(t.TempDir(), "review"),
+				"metadata", "apply", "--app", "app-1", "--version", "1.2.3", "--dir", dir, "--include", "localizations,age-rating", "--output", "json",
 			})
-			if !errors.Is(runErr, flag.ErrHelp) || stdout != "" || !strings.Contains(stderr, test.wantErr) {
-				t.Fatalf("err=%v stdout=%q stderr=%q", runErr, stdout, stderr)
+			if test.wantErr != "" {
+				if !errors.Is(runErr, flag.ErrHelp) || stdout != "" || !strings.Contains(stderr, test.wantErr) || mutations != 0 {
+					t.Fatalf("err=%v stdout=%q stderr=%q mutations=%d", runErr, stdout, stderr, mutations)
+				}
+				return
+			}
+			if runErr != nil || stderr != "" || mutations != 2 || len(patches) != 1 {
+				t.Fatalf("err=%v stdout=%q stderr=%q mutations=%d patches=%v", runErr, stdout, stderr, mutations, patches)
+			}
+			var wantPatch map[string]any
+			if err := json.Unmarshal([]byte(test.local), &wantPatch); err != nil {
+				t.Fatal(err)
+			}
+			if len(patches[0]) != len(wantPatch) {
+				t.Fatalf("PATCH = %v, want %v", patches[0], wantPatch)
+			}
+			for field, value := range wantPatch {
+				if patches[0][field] != value {
+					t.Fatalf("PATCH %s = %v, want %v", field, patches[0][field], value)
+				}
 			}
 		})
 	}

@@ -294,6 +294,18 @@ func ExecutePushWithWarnings(ctx context.Context, opts PushExecutionOptions) (Pu
 		result.Adds = append(result.Adds, adds...)
 		result.Updates = append(result.Updates, updates...)
 		if len(plan.changed) > 0 {
+			if scope.validate != nil {
+				desired := make(map[string]string, len(remote)+len(localSettings[i]))
+				for field, value := range remote {
+					desired[field] = value
+				}
+				for field, value := range localSettings[i] {
+					desired[field] = value
+				}
+				if err := scope.validate(desired); err != nil {
+					return PushPlanResult{}, warnings, shared.UsageErrorf("%s: invalid %s settings: %v", errorPrefix, scope.name, err)
+				}
+			}
 			settingPlans = append(settingPlans, plan)
 			settingCalls = append(settingCalls, PlanAPICall{Operation: "update", Scope: scope.name, Count: 1})
 		}
