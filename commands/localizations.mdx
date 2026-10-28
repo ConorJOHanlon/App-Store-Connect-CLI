@@ -291,7 +291,16 @@ asc localizations supported-locales --version "VERSION_ID" --output json --prett
 Create a new version localization.
 
 <ParamField path="--version" type="string" required>
-  App Store version ID to create the localization under
+  App Store version ID, or a version string with `--app` (or `ASC_APP_ID`)
+</ParamField>
+
+<ParamField path="--app" type="string">
+  App Store Connect app ID (or `ASC_APP_ID`) when resolving a version string
+</ParamField>
+
+<ParamField path="--platform" type="string">
+  Platform for a version string: `IOS`, `MAC_OS`, `TV_OS`, or `VISION_OS`.
+  Required when the version string exists on multiple platforms.
 </ParamField>
 
 <ParamField path="--locale" type="string" required>
@@ -324,6 +333,7 @@ Common failures:
 
 ```bash  theme={null}
 asc localizations create --version "VERSION_ID" --locale "ja"
+asc localizations create --app "APP_ID" --version "1.2.3" --platform IOS --locale "ja"
 asc localizations create --version "VERSION_ID" --locale "ja" --if-exists skip
 asc localizations create --version "VERSION_ID" --locale "ar-SA" --description "Arabic app" --keywords "arabic,productivity"
 asc localizations create --version "VERSION_ID" --locale "zh-Hans" --description "Simplified Chinese app" --if-exists update
@@ -337,11 +347,16 @@ asc localizations create --version "VERSION_ID" --locale "zh-Hans" --description
 Update localization metadata.
 
 <ParamField path="--version" type="string">
-  App Store version ID for version localizations
+  App Store version ID, or a version string with `--app` (or `ASC_APP_ID`)
 </ParamField>
 
 <ParamField path="--app" type="string">
-  App Store Connect app ID (or `ASC_APP_ID`) for app-info localizations
+  App Store Connect app ID (or `ASC_APP_ID`) for app-info localizations or version-string resolution
+</ParamField>
+
+<ParamField path="--platform" type="string">
+  Platform for a version string: `IOS`, `MAC_OS`, `TV_OS`, or `VISION_OS`.
+  Required when the version string exists on multiple platforms.
 </ParamField>
 
 <ParamField path="--app-info" type="string">
@@ -398,6 +413,7 @@ Common failures:
 
 ```bash  theme={null}
 asc localizations update --version "VERSION_ID" --locale "en-US" --description "New description"
+asc localizations update --app "APP_ID" --version "1.2.3" --platform IOS --locale "en-US" --description "New description"
 asc localizations update --version "VERSION_ID" --locale "en-US" --keywords "new,keywords"
 asc localizations update --version "VERSION_ID" --locale "en-US" --clear-promotional-text --confirm
 asc localizations update --app "APP_ID" --type app-info --locale "ar-SA" --subtitle "Arabic subtitle"
