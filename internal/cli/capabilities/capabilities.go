@@ -81,7 +81,7 @@ through web-session commands, or blocked by Apple's public API.
 
 Examples:
   asc capabilities
-  asc capabilities --status not-public-api --output table
+  asc capabilities --status web-session --output table
   asc capabilities --area release,monetization --output markdown
   asc capabilities --output json --pretty`,
 		FlagSet:   fs,
@@ -263,14 +263,7 @@ func capabilityRows() []Capability {
 				"builds",
 				"preReleaseVersions",
 			},
-			Notes: []string{"The CLI wraps Apple's supported upload tooling and build-processing APIs."},
-		},
-		{
-			Area:       "builds",
-			Capability: "Direct REST build upload",
-			Status:     statusNotPublicAPI,
-			Notes:      []string{"Apple does not expose direct IPA upload as a normal public App Store Connect REST endpoint."},
-			NextAction: "Use asc builds upload, Xcode, Transporter, or asc publish workflows.",
+			Notes: []string{"Uploads through the public buildUploads and buildUploadFiles REST APIs, then tracks build processing."},
 		},
 		{
 			Area:         "app-management",
@@ -735,6 +728,19 @@ func capabilityRows() []Capability {
 				"asc web review reply",
 			},
 			Notes: []string{"Reviewer-message and rejection-detail surfaces, plus next-version subscription and IAP attachment, are richer or only available in App Store Connect web-session flows. The reply path requires --confirm, has no attachment, and does not automatically retry an ambiguous send; the draft path provides unsent create/update/delete without attachments or automatic retries. Source capture has not proven provider acceptance."},
+		},
+		{
+			Area:       "review",
+			Capability: "macOS App Sandbox Information",
+			Status:     statusWebSession,
+			Commands: []string{
+				"asc web review sandbox-entitlements catalog",
+				"asc web review sandbox-entitlements list",
+				"asc web review sandbox-entitlements set",
+				"asc web review sandbox-entitlements delete",
+			},
+			APIResources: []string{"appSandboxEntitlements", "appSandboxEntitlementUsages"},
+			Notes:        []string{"Reads and writes the entitlement usage information of a macOS version's App Review details, which the public API does not expose. set and delete require --confirm, read the current rows first, and verify the result with a fresh read. Reads and writes were live-verified with a built-CLI canary on 2026-10-27."},
 		},
 	}
 }

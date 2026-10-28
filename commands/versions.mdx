@@ -118,21 +118,38 @@ before authentication or API requests.
 asc versions view --version-id "VERSION_ID"
 asc versions view --app "123456789" --version "1.2.3"
 asc versions view --app "123456789" --version "1.2.3" --platform MAC_OS
+asc versions view --version-id "VERSION_ID" --include build
 asc versions view --version-id "VERSION_ID" --include-build --include-submission
 asc versions view --version-id "VERSION_ID" --include "ageRatingDeclaration,appStoreReviewDetail"
 ```
 
 **Response:**
 
+View prints Apple's `appStoreVersions` envelope: every
+attribute Apple returns (including `appStoreState`, `releaseType`,
+`copyright`, `reviewType`, `usesIdfa`, and null values such as
+`"earliestReleaseDate": null`), `relationships`, `included`, and `links`. Two
+exceptions: an included `appStoreReviewDetails` demo account password is
+redacted unless you pass `--include-sensitive`, and `ageRatingDeclaration` is
+fetched with a second request and added to `included`.
+
+In 6.0.0, the deprecated reduced summary is replaced by this envelope for every
+view. Read version fields from `data.attributes`; the state is
+`data.attributes.appVersionState` (or `data.attributes.appStoreState`).
+`--include-build` and `--include-submission` remain supported aliases for
+`--include build` and `--include appStoreVersionSubmission`.
+
 ```json  theme={null}
 {
-  "id": "VERSION_ID",
-  "versionString": "1.0.0",
-  "platform": "IOS",
-  "state": "READY_FOR_SALE",
-  "buildId": "BUILD_ID",
-  "buildVersion": "100",
-  "submissionId": "SUBMISSION_ID"
+  "data": {
+    "type": "appStoreVersions",
+    "id": "VERSION_ID",
+    "attributes": {
+      "versionString": "1.0.0",
+      "platform": "IOS",
+      "appStoreState": "READY_FOR_SALE"
+    }
+  }
 }
 ```
 
