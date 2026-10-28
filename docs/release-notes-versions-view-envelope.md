@@ -9,18 +9,17 @@ has no phased release, instead of an empty `{"type":"","id":""}` resource.
 `asc status` reports that phased release as `"configured": false` instead of
 configured with an empty ID.
 
-## Deprecated: the `versions view` summary
+## 6.0.0: the default envelope
 
-Without `--include`, `asc versions view` prints a reduced summary (`id`,
-`versionString`, `platform`, `state`, `downloadable`, and the
-`--include-build`/`--include-submission` IDs) that is not Apple's envelope. It
-keeps that shape in this release and, for JSON output, prints this warning to stderr:
+`asc versions view` now prints Apple's `appStoreVersions` envelope even without
+`--include`. The reduced summary deprecated in 5.x has been removed. JSON keeps
+all attributes, relationships, links, included resources, and null values Apple
+returns. Table and Markdown output continue to render the version and its linked
+build or submission.
 
-```text
-Warning: `asc versions view` without --include prints a reduced summary; the next major release prints Apple's appStoreVersions envelope instead. Pass --include to get the envelope now: --include build replaces --include-build, --include appStoreVersionSubmission replaces --include-submission.
-```
-
-The next major release prints Apple's envelope by default. Migrate now:
+`--include-build` and `--include-submission` remain supported and request the
+same relationships as `--include build` and `--include appStoreVersionSubmission`.
+They return the envelope as well. Update scripts that read the summary fields:
 
 | Before | After |
 |---|---|
