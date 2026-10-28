@@ -256,6 +256,9 @@ func (g *phasedReleaseGuard) step(ctx context.Context, resp *asc.AppStoreVersion
 // stopUnlessActive records the observed release and reports whether the guard
 // must stop because the release is no longer ACTIVE.
 func (g *phasedReleaseGuard) stopUnlessActive(resp *asc.AppStoreVersionPhasedReleaseResponse) (bool, error) {
+	if resp.Data == nil {
+		return true, fmt.Errorf("version %s has no phased release", g.result.VersionID)
+	}
 	g.observe(resp)
 	switch g.result.PhasedReleaseState {
 	case asc.PhasedReleaseStateActive:

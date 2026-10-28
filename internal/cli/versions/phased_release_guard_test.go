@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
@@ -41,6 +42,7 @@ type guardHarness struct {
 	days     []int
 	getErrs  int
 	gets     int
+	nullGet  int
 	patches  []string
 	checks   []guardCheckCall
 	results  []phasedReleaseCheckResult
@@ -98,6 +100,9 @@ func (h *guardHarness) serve(req *http.Request) (*http.Response, error) {
 	switch {
 	case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/VERSION-1/appStoreVersionPhasedRelease":
 		h.gets++
+		if h.gets == h.nullGet {
+			return guardJSON(http.StatusOK, `{"data":null,"links":{}}`), nil
+		}
 		if h.getErrs > 0 {
 			h.getErrs--
 			return guardJSON(http.StatusInternalServerError, `{"errors":[{"status":"500","code":"UNEXPECTED_ERROR","title":"An unexpected error occurred."}]}`), nil
@@ -174,10 +179,19 @@ func runGuardCommand(t *testing.T, ctx context.Context, args ...string) (string,
 }
 
 func (h *guardHarness) run(args ...string) (string, string, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	h.cancel = cancel
-	return runGuardCommand(h.t, ctx, args...)
+	var runErr error
+	stdout, stderr := captureGuardOutput(h.t, func() {
+		synctest.Test(h.t, func(*testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			h.cancel = cancel
+			cmd := PhasedReleaseGuardCommand()
+			if runErr = cmd.FlagSet.Parse(args); runErr == nil {
+				runErr = cmd.Exec(ctx, cmd.FlagSet.Args())
+			}
+		})
+	})
+	return stdout, stderr, runErr
 }
 
 func decodeGuardResult(t *testing.T, stdout string) asc.PhasedReleaseGuardResult {
@@ -383,6 +397,35 @@ func TestPhasedReleaseGuardStopsCleanlyWhenReleaseLeavesActive(t *testing.T) {
 			result := decodeGuardResult(t, stdout)
 			if result.Outcome != test.wantOutcome || len(result.Checks) != test.wantChecks {
 				t.Fatalf("receipt = %+v, want %s with %d checks", result, test.wantOutcome, test.wantChecks)
+			}
+		})
+	}
+}
+
+func TestPhasedReleaseGuardMissingReleaseStopsBeforeCheckOrMutation(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		nullGet    int
+		wantChecks int
+	}{
+		{"initial read", 1, 0},
+		{"recheck before pause", 2, 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newGuardHarness(t)
+			h.states, h.days = []string{"ACTIVE"}, []int{2}
+			h.results = []phasedReleaseCheckResult{{ExitCode: 1}}
+			h.nullGet = test.nullGet
+
+			stdout, _, err := h.run(guardArgs("--confirm")...)
+			if err == nil || err.Error() != "phased-release guard: version VERSION-1 has no phased release" {
+				t.Fatalf("error = %v, want missing phased release error", err)
+			}
+			if h.gets != test.nullGet || len(h.checks) != test.wantChecks || len(h.patches) != 0 {
+				t.Fatalf("reads = %d checks = %d patches = %v, want %d reads, %d checks, and no mutation", h.gets, len(h.checks), h.patches, test.nullGet, test.wantChecks)
+			}
+			if stdout != "" {
+				t.Fatalf("stdout = %q, want no receipt after a missing release", stdout)
 			}
 		})
 	}

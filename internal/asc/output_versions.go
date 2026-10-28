@@ -184,6 +184,9 @@ func appStoreVersionDetailRows(result *AppStoreVersionDetailResult) ([]string, [
 
 func appStoreVersionPhasedReleaseRows(resp *AppStoreVersionPhasedReleaseResponse) ([]string, [][]string) {
 	headers := []string{"Phased Release ID", "State", "Start Date", "Current Day", "Progress", "Total Pause Duration"}
+	if resp.Data == nil {
+		return headers, nil
+	}
 	attrs := resp.Data.Attributes
 	rows := [][]string{{
 		resp.Data.ID,
