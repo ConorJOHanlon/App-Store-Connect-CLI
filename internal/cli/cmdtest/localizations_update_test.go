@@ -615,6 +615,28 @@ func TestLocalizationsUpdateVersionErrorIncludesAttemptedFields(t *testing.T) {
 	}
 }
 
+func TestLocalizationsUpdateMissingAppInfoLocaleSuggestsCreation(t *testing.T) {
+	setupLocUpdateAuth(t)
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
+	stubTransport(t, func(req *http.Request) (*http.Response, error) {
+		switch req.Method + " " + req.URL.Path {
+		case "GET /v1/appInfos/selected-info/appInfoLocalizations":
+			return locUpdateJSONResponse(`{"data":[],"links":{}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+			return nil, errors.New("unexpected request")
+		}
+	})
+	stdout, stderr := captureOutput(t, func() {
+		if code := cmd.Run([]string{"localizations", "update", "--type", "app-info", "--app", "app-1", "--app-info", "selected-info", "--locale", "fr-FR", "--subtitle", "Subtitle"}, "1.2.3"); code != cmd.ExitError {
+			t.Fatalf("exit code = %d, want %d", code, cmd.ExitError)
+		}
+	})
+	if stdout != "" || !strings.Contains(stderr, `no existing localization found for locale "fr-FR"`) || !strings.Contains(stderr, `asc apps rename --app "app-1" --app-info "selected-info" --locale "fr-FR" --name "APP_NAME"`) {
+		t.Fatalf("stdout=%q stderr=%q, want missing locale and creation command", stdout, stderr)
+	}
+}
+
 func TestLocalizationsUpdateAppInfoErrorIncludesResolvedEndpoint(t *testing.T) {
 	setupLocUpdateAuth(t)
 
