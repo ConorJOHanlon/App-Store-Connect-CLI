@@ -259,8 +259,7 @@ asc status \
 
 asc versions view \
   --version-id "VERSION_ID" \
-  --include-build \
-  --include-submission \
+  --include "build,appStoreVersionSubmission" \
   --output json
 
 asc submit status --version-id "VERSION_ID" --output json
