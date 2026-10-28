@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -22,8 +23,9 @@ const (
 )
 
 type metadataSettingField struct {
-	name string
-	kind metadataSettingFieldKind
+	name   string
+	kind   metadataSettingFieldKind
+	values []string
 }
 
 type metadataSettingTarget struct {
@@ -38,6 +40,7 @@ type metadataSettingScope struct {
 	fileName     string
 	fields       []metadataSettingField
 	needsAppInfo bool
+	validate     func(map[string]string, bool) error
 	fetch        func(ctx context.Context, client *asc.Client, target metadataSettingTarget) (map[string]string, error)
 	update       func(ctx context.Context, client *asc.Client, target metadataSettingTarget, changed map[string]string) error
 }
@@ -49,7 +52,7 @@ type metadataSettingPlan struct {
 }
 
 func metadataSettingScopes() []metadataSettingScope {
-	return []metadataSettingScope{categoriesSettingScope}
+	return []metadataSettingScope{categoriesSettingScope, ageRatingSettingScope}
 }
 
 func metadataSettingScopeNames() []string {
@@ -142,6 +145,11 @@ func readMetadataSettingFile(dir string, scope metadataSettingScope) (map[string
 		}
 		values[field.name] = value
 	}
+	if scope.validate != nil {
+		if err := scope.validate(values, false); err != nil {
+			return nil, shared.UsageErrorf("invalid metadata schema in %s: %v", path, err)
+		}
+	}
 	return values, nil
 }
 
@@ -173,6 +181,9 @@ func decodeMetadataSettingValue(field metadataSettingField, raw json.RawMessage)
 		value = strings.TrimSpace(value)
 		if value == "" {
 			return "", fmt.Errorf("%s cannot be empty; omit it to leave the value unchanged", field.name)
+		}
+		if len(field.values) > 0 && !slices.Contains(field.values, value) {
+			return "", fmt.Errorf("%s must be one of %s", field.name, strings.Join(field.values, ", "))
 		}
 		return value, nil
 	}
