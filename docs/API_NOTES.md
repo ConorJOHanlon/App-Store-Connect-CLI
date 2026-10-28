@@ -163,6 +163,14 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
 - Contact fields: `details-create` with default `--if-exists fail` requires non-blank `--contact-first-name` and `--contact-phone` before `POST /v1/appStoreReviewDetails` (`--if-exists skip|update` and `details-update` are exempt).
 - `contactPhone`: `+1` numbers written with digits and standard separators must have exactly 10 digits after `+1`; other country codes and numbers without `+` are left to App Store Connect.
 
+## Web-session App Sandbox Information (`appSandboxEntitlementUsages`)
+
+- The App Sandbox Information rows of a macOS version are `appSandboxEntitlementUsages` resources related to the version's `appStoreReviewDetails`; the public API rejects both `/v1/appSandboxEntitlements` and the `appSandboxEntitlementUsages` relationship. `asc web review sandbox-entitlements` uses `/iris/v1` with the `X-CSRF-ITC: [asc-ui]` header App Store Connect's web client sends:
+  - `GET /iris/v1/appStoreVersions/{id}?fields[appStoreVersions]=platform,appStoreReviewDetail&include=appStoreReviewDetail` gives the platform and the review detail ID in one read (unknown version: 404 `NOT_FOUND`). Commands refuse non-`MAC_OS` versions and versions without review details.
+  - `catalog` reads `GET /iris/v1/appSandboxEntitlements?limit=200` (96 keys with an `optional` boolean when captured). `list` reads `GET /iris/v1/appStoreReviewDetails/{id}/appSandboxEntitlementUsages?include=appSandboxEntitlement&limit=200`; without the include, rows carry no entitlement linkage. Both reads fail closed when `links.next` or `meta.paging.total` reports another page.
+  - `set` sends `POST /iris/v1/appSandboxEntitlementUsages` with `attributes.justification` and `appStoreReviewDetail` plus `appSandboxEntitlement` relationships, or `PATCH /iris/v1/appSandboxEntitlementUsages/{id}` with `attributes.justification` only; `delete` sends `DELETE /iris/v1/appSandboxEntitlementUsages/{id}`. App Store Connect's server validation codes include `justification_empty`, `justification_length_not_met`, and `justification_length_exceeded`.
+  - Live-verified on 2026-10-27: a built-CLI canary read the catalog and rows, then created, left unchanged, updated, and deleted one row on a macOS version in `PREPARE_FOR_SUBMISSION`, verifying each step with a fresh read and restoring the original rows. A non-`MAC_OS` version is refused before any write.
+
 ## Game Center
 
 - Endpoints resolve Game Center detail via `/v1/apps/{id}/gameCenterDetail` (404 when disabled; `asc game-center details list` has no pagination flags).
@@ -221,7 +229,7 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
 
 - Exposed via `subscriptionPlanAvailabilities` (`/v1/subscriptions/{id}/planAvailabilities`) with `planType=MONTHLY` (upfront availability stays on `subscriptionAvailability`).
 - `/v1/subscriptionPricePoints/{id}/adjustedEqualizations` accepts only `filter[planType]=MONTHLY` (rejects `UPFRONT`).
-- Unavailable in `USA` and `SGP`; the CLI strips both territories before writing monthly-commitment plan availability.
+- Unavailable in `USA`; the CLI strips that territory before writing monthly-commitment plan availability.
 
 ## Subscription Plan Availability
 
