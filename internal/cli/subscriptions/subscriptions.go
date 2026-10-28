@@ -441,7 +441,7 @@ func SubscriptionsListCommand() *ffcli.Command {
 	appID := shared.BindResourceIDFlag(fs, "app", "apps", "App Store Connect app ID (or ASC_APP_ID env); lists subscriptions across all groups")
 	fields := fs.String("fields", "", "Sparse fields for subscriptions")
 	versionFields := fs.String("version-fields", "", "Sparse fields for included subscriptionVersions")
-	include := fs.String("include", "", "Include relationships (supports versions)")
+	include := fs.String("include", "", "Include relationships (comma-separated): "+strings.Join(subscriptionIncludeList(), ", "))
 	versionsLimit := fs.Int("versions-limit", 0, "Maximum included versions (1-50)")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
@@ -457,6 +457,7 @@ func SubscriptionsListCommand() *ffcli.Command {
 Examples:
   asc subscriptions list --group-id "GROUP_ID"
   asc subscriptions list --group-id "GROUP_ID" --include versions --versions-limit 10
+  asc subscriptions list --group-id "GROUP_ID" --include subscriptionLocalizations,appStoreReviewScreenshot
   asc subscriptions list --group-id "GROUP_ID" --paginate
   asc subscriptions list --app "APP_ID" --paginate`,
 		FlagSet:   fs,
@@ -707,7 +708,7 @@ func SubscriptionsGetCommand() *ffcli.Command {
 	subID := shared.BindResourceIDFlag(fs, "id", "subscriptions", "Subscription ID")
 	fields := fs.String("fields", "", "Sparse fields for subscriptions")
 	versionFields := fs.String("version-fields", "", "Sparse fields for included subscriptionVersions")
-	include := fs.String("include", "", "Include relationships (supports versions)")
+	include := fs.String("include", "", "Include relationships (comma-separated): "+strings.Join(subscriptionIncludeList(), ", "))
 	versionsLimit := fs.Int("versions-limit", 0, "Maximum included versions (1-50)")
 	output := shared.BindOutputFlags(fs)
 
@@ -719,7 +720,8 @@ func SubscriptionsGetCommand() *ffcli.Command {
 
 Examples:
   asc subscriptions view --id "SUB_ID"
-  asc subscriptions view --id "SUB_ID" --include versions --versions-limit 10`,
+  asc subscriptions view --id "SUB_ID" --include versions --versions-limit 10
+  asc subscriptions view --id "SUB_ID" --include subscriptionLocalizations,appStoreReviewScreenshot`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -783,7 +785,7 @@ func SubscriptionsUpdateCommand() *ffcli.Command {
 	fs.Var(&groupLevel, "group-level", "Subscription ordering level (positive integer)")
 	familySharable := fs.Bool("family-sharable", false, "Enable Family Sharing (cannot be undone)")
 	marketSettings := fs.String("market-settings", "", "Markets (comma-separated): APP_STORE, APPLE_SCHOOL, APPLE_BUSINESS")
-	multiSeatStatus := fs.String("multi-seat-status", "", "Multi-seat status: ENABLED, DISABLED")
+	multiSeatStatus := fs.String("multi-seat-status", "", "Multi-seat status: ENABLED, DISABLED (Apple default: ENABLED)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -797,7 +799,8 @@ Examples:
   asc subscriptions update --id "SUB_ID" --review-note "Same paywall structure, design may differ"
   asc subscriptions update --id "SUB_ID" --subscription-period ONE_YEAR
   asc subscriptions update --id "SUB_ID" --group-level 3
-  asc subscriptions update --id "SUB_ID" --family-sharable`,
+  asc subscriptions update --id "SUB_ID" --family-sharable
+  asc subscriptions update --id "SUB_ID" --market-settings APP_STORE,APPLE_BUSINESS`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -1006,7 +1009,7 @@ func SubscriptionsPricesListCommand() *ffcli.Command {
 	subID := shared.BindResourceIDFlag(fs, "subscription-id", "subscriptions", "Subscription ID, product ID, or exact current name")
 	appID := addSubscriptionLookupAppFlag(fs)
 	planType := fs.String("plan-type", "", "Filter by plan type: MONTHLY or UPFRONT")
-	territory := fs.String("territory", "", "Filter by territory (accepts alpha-2, alpha-3, or exact English country name; e.g., US, USA, United States)")
+	territory := fs.String("territory", "", "Filter by territories (comma-separated; accepts alpha-2, alpha-3, or exact English country name; e.g., US, USA, United States)")
 	pricePointIDs := fs.String("price-point-id", "", "Filter by subscription price point IDs (comma-separated)")
 	fields := fs.String("fields", "", "Subscription price fields (comma-separated)")
 	territoryFields := fs.String("territory-fields", "", "Included territory fields (comma-separated): currency")
@@ -1025,7 +1028,8 @@ func SubscriptionsPricesListCommand() *ffcli.Command {
 		LongHelp: `List prices for a subscription.
 
 Use --plan-type to filter by MONTHLY or UPFRONT billing plan prices.
-Use --territory to filter by a single territory.
+Use --territory to filter by one or more comma-separated territories. With
+--resolved, the current price is returned for each listed territory.
 Use --price-point-id to filter by subscription price point IDs. Use --fields,
 --price-point-fields, and --territory-fields to request sparse response fields;
 the corresponding relationship is included automatically when needed.
@@ -1034,7 +1038,7 @@ Examples:
   asc subscriptions prices list --subscription-id "SUB_ID"
   asc subscriptions prices list --subscription-id "SUB_ID" --paginate
   asc subscriptions prices list --subscription-id "SUB_ID" --resolved
-  asc subscriptions prices list --subscription-id "SUB_ID" --resolved --territory USA
+  asc subscriptions prices list --subscription-id "SUB_ID" --resolved --territory USA,GBR
   asc subscriptions prices list --subscription-id "SUB_ID" --plan-type MONTHLY
   asc subscriptions prices list --subscription-id "SUB_ID" --price-point-id "PRICE_POINT_ID" --include subscriptionPricePoint --price-point-fields customerPrice`,
 		FlagSet:   fs,
@@ -1085,23 +1089,11 @@ Examples:
 				planTypeFilter = normalized
 			}
 
-			territoryFilter := strings.TrimSpace(*territory)
-			territoryProvided := false
-			fs.Visit(func(f *flag.Flag) {
-				if f.Name == "territory" {
-					territoryProvided = true
-				}
-			})
-			if territoryProvided {
-				if territoryFilter == "" {
-					return shared.UsageError("invalid value for --territory: cannot be empty")
-				}
-				normalizedTerritory, normalizeErr := ascterritory.Normalize(territoryFilter)
-				if normalizeErr != nil {
-					return shared.UsageError(normalizeErr.Error())
-				}
-				territoryFilter = normalizedTerritory
+			selectedTerritories, err := normalizeOptionalTerritoryFilter(fs, "territory", *territory)
+			if err != nil {
+				return shared.UsageError(err.Error())
 			}
+			territoryFilter := strings.Join(selectedTerritories, ",")
 
 			selectedPricePointIDs, err := normalizeOptionalCSVFilter(fs, "price-point-id", *pricePointIDs, false)
 			if err != nil {
@@ -1878,7 +1870,7 @@ Confirmation is required when --billing-mode monthly-commitment is selected.`,
 				}
 				territoryIDs, excluded := filterMonthlyCommitmentTerritories(territoryIDs)
 				if len(territoryIDs) == 0 {
-					return shared.UsageError("no eligible monthly-commitment territories remain after excluding USA and Singapore")
+					return shared.UsageError("no eligible monthly-commitment territories remain after excluding USA")
 				}
 				if !*confirm {
 					return shared.UsageError("--confirm is required for monthly-commitment availability changes")
