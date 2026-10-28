@@ -48,8 +48,10 @@ and are sent once; the client does not automatically retry them.
   an uncertain request. Optional bulk storefront codes are three-letter codes;
   omitting them targets every eligible storefront. Extensions cannot be undone.
 - Bulk submission acknowledges processing, not completion. Poll status explicitly
-  or receive RENEWAL_EXTENSION notifications. There is no separate paginated
-  results endpoint; status returns final success/failure counts.
+  or receive RENEWAL_EXTENDED notifications for individual successes and
+  RENEWAL_EXTENSION notifications for failures (FAILURE) and completion (SUMMARY).
+  There is no separate paginated results endpoint; status returns final
+  success/failure counts.
 - Finish only after content is delivered; no server finish is needed if the app
   already calls StoreKit's `finish()`.
 
@@ -76,6 +78,7 @@ mutations are outside this implementation's verification scope.
 - [Individual extension](https://developer.apple.com/documentation/appstoreserverapi/extend-a-subscription-renewal-date)
 - [Bulk extension](https://developer.apple.com/documentation/appstoreserverapi/extend-subscription-renewal-dates-for-all-active-subscribers)
 - [Extension status](https://developer.apple.com/documentation/appstoreserverapi/get-status-of-subscription-renewal-date-extensions)
+- [Renewal extension notifications](https://developer.apple.com/documentation/appstoreserverapi/extending-the-renewal-date-for-auto-renewable-subscriptions#Receive-in-progress-and-summary-notifications)
 - [Request identifier](https://developer.apple.com/documentation/appstoreserverapi/requestidentifier)
 - [Finish transaction](https://developer.apple.com/documentation/appstoreserverapi/finish-transaction)
 

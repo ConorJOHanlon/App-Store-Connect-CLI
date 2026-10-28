@@ -290,8 +290,9 @@ func extendAllSubscriptionsCommand() *ffcli.Command {
 		`Submit an asynchronous renewal extension. Omitting --storefront-country-codes
 targets all eligible storefronts. Extensions cannot be reversed. A successful
 submission only acknowledges processing; use extension-status or receive
-RENEWAL_EXTENSION notifications for outcomes. Reuse the same --request-id UUID
-when retrying an uncertain request. Requires --confirm.
+RENEWAL_EXTENDED notifications for individual successes and RENEWAL_EXTENSION
+notifications for failures (FAILURE) and completion (SUMMARY). Reuse the same
+--request-id UUID when retrying an uncertain request. Requires --confirm.
 
 Apple extends only active subscriptions with at least one paid period, at most
 twice per customer within 365 days. Subscriptions in a free offer period, in
@@ -337,7 +338,8 @@ func extensionStatusCommand() *ffcli.Command {
 	return documentedLeafCommand("extension-status", "asc storekit subscriptions extension-status --product-id PRODUCT --request-id UUID --environment ENV [flags]", "Check bulk renewal-extension completion and final counts.",
 		`Get the status of a bulk renewal extension without polling automatically.
 Processing may take hours or days. Final counts appear when complete is true.
-Detailed outcomes are delivered through RENEWAL_EXTENSION notifications.
+RENEWAL_EXTENDED notifications report individual successes. RENEWAL_EXTENSION
+notifications report failures (FAILURE) and completion (SUMMARY).
 
 Examples:
   asc storekit subscriptions extension-status --product-id com.example.monthly --request-id 11111111-2222-4333-8444-555555555555 --environment production`, fs, func(ctx context.Context, args []string) error {

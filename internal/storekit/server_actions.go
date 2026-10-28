@@ -110,7 +110,8 @@ func (c *Client) ExtendRenewalDateForAllActiveSubscribers(ctx context.Context, r
 }
 
 // GetStatusOfSubscriptionRenewalDateExtensions returns completion and final
-// counts. Detailed outcomes arrive through RENEWAL_EXTENSION notifications.
+// counts. RENEWAL_EXTENDED notifications report individual successes;
+// RENEWAL_EXTENSION notifications report failures and completion.
 func (c *Client) GetStatusOfSubscriptionRenewalDateExtensions(ctx context.Context, productID, requestID string) (json.RawMessage, error) {
 	path, err := pathWithID("inApps/v1/subscriptions/extend/mass/", "product ID", productID)
 	if err != nil {
