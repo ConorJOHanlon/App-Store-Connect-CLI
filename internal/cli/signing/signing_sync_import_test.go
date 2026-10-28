@@ -378,6 +378,26 @@ func TestSigningSyncImportFailuresWriteNothing(t *testing.T) {
 			wantErr: "private key certs/distribution/CERT1.p12 does not match certificate certs/distribution/CERT1.cer",
 		},
 		{
+			name: "aggregate source size limit",
+			mutate: func(t *testing.T, fixture openSSLImportFixture) {
+				for index := 0; index <= maxEncryptedSigningBytes/maxOpenSSLImportFileSize; index++ {
+					name := filepath.Join(fixture.dir, "certs", "distribution", fmt.Sprintf("limit-%03d.cer", index))
+					file, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := file.Truncate(maxOpenSSLImportFileSize); err != nil {
+						_ = file.Close()
+						t.Fatal(err)
+					}
+					if err := file.Close(); err != nil {
+						t.Fatal(err)
+					}
+				}
+			},
+			wantErr: fmt.Sprintf("source signing repository exceeds the %d-byte cumulative size limit", maxEncryptedSigningBytes),
+		},
+		{
 			name: "unsupported certificate directory",
 			mutate: func(t *testing.T, fixture openSSLImportFixture) {
 				if err := os.Rename(filepath.Join(fixture.dir, "certs", "development"), filepath.Join(fixture.dir, "certs", "developmnt")); err != nil {
@@ -446,5 +466,29 @@ func TestSigningSyncImportFlagValidation(t *testing.T) {
 				t.Fatalf("error = %v, want usage error %q", err, test.wantErr)
 			}
 		})
+	}
+}
+
+func TestSigningSyncImportSourceCloneDeadlineAndCleanup(t *testing.T) {
+	t.Setenv("ASC_TIMEOUT", "24h")
+	t.Setenv("ASC_TIMEOUT_SECONDS", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var bounded bool
+	var temporaryRoot string
+	_, _, _, err := openOpenSSLImportSource(ctx, "https://example.invalid/signing.git", "master", func(store *signingpkg.GitStore, cloneCtx context.Context, _ bool) error {
+		_, bounded = cloneCtx.Deadline()
+		temporaryRoot = filepath.Dir(store.LocalDir)
+		cancel()
+		return errors.New("clone process terminated")
+	})
+	if !bounded {
+		t.Error("remote source clone received a context without a deadline")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("source cancellation = %v, want context.Canceled", err)
+	}
+	if _, err := os.Stat(temporaryRoot); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("failed source clone left temporary root %s: %v", temporaryRoot, err)
 	}
 }

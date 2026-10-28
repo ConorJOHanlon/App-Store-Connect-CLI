@@ -82,7 +82,9 @@ file without a password), and each profile is a .mobileprovision or
 .provisionprofile file. Certificate directories are development, distribution,
 enterprise, developer_id_application, developer_id_installer, and
 mac_installer_distribution. The appstore, adhoc, and developer_id aliases also
-map to distribution. Every file is decrypted with --source-password. Each
+map to distribution. Encrypted signing inputs are limited to 256 files, 4 MiB
+per file, and 128 MiB total. Remote cloning uses the configured request timeout.
+Every file is decrypted with --source-password. Each
 certificate must pair with its private key and each profile must carry a
 valid signature, or nothing is imported. Wildcard profiles are skipped with a
 warning because signing sync stores only explicit bundle ID profiles.
@@ -144,7 +146,7 @@ Examples:
 				}
 			}
 
-			sourceRoot, sourceLabel, cleanup, err := openOpenSSLImportSource(ctx, sourceLocation, strings.TrimSpace(*sourceBranch))
+			sourceRoot, sourceLabel, cleanup, err := openOpenSSLImportSource(ctx, sourceLocation, strings.TrimSpace(*sourceBranch), (*signingpkg.GitStore).Clone)
 			if err != nil {
 				return fmt.Errorf("signing sync import: %w", err)
 			}
@@ -226,7 +228,7 @@ Examples:
 	}
 }
 
-func openOpenSSLImportSource(ctx context.Context, location, branch string) (rootfs.Root, string, func(), error) {
+func openOpenSSLImportSource(ctx context.Context, location, branch string, cloneRepository func(*signingpkg.GitStore, context.Context, bool) error) (rootfs.Root, string, func(), error) {
 	if info, err := os.Stat(location); err == nil && info.IsDir() {
 		root, err := rootfs.New(location)
 		if err != nil {
@@ -244,8 +246,13 @@ func openOpenSSLImportSource(ctx context.Context, location, branch string) (root
 	clone := &signingpkg.GitStore{RepoURL: location, LocalDir: filepath.Join(tmpDir, "source"), Branch: branch}
 	cleanup := func() { _ = os.RemoveAll(tmpDir) }
 	fmt.Fprintln(os.Stderr, "Cloning source repository...")
-	if err := clone.Clone(ctx, false); err != nil {
+	cloneCtx, cancel := shared.ContextWithTimeout(ctx)
+	defer cancel()
+	if err := cloneRepository(clone, cloneCtx, false); err != nil {
 		cleanup()
+		if contextErr := cloneCtx.Err(); contextErr != nil {
+			err = contextErr
+		}
 		return rootfs.Root{}, "", nil, fmt.Errorf("clone source: %w", err)
 	}
 	root, err := rootfs.New(clone.LocalDir)
@@ -309,11 +316,32 @@ func loadOpenSSLImportSource(root rootfs.Root, password string) ([]openSSLImport
 	if len(certFiles)+len(profileFiles) > maxEncryptedSigningFiles {
 		return nil, nil, fmt.Errorf("source contains more than %d signing files", maxEncryptedSigningFiles)
 	}
+	var sourceBytes int64
+	for _, relPath := range append(certFiles, profileFiles...) {
+		file, err := root.OpenFile(relPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read %s: %w", relPath, err)
+		}
+		info, err := file.Stat()
+		_ = file.Close()
+		if err != nil {
+			return nil, nil, fmt.Errorf("read %s: %w", relPath, err)
+		}
+		if info.Size() < 0 || info.Size() > maxEncryptedSigningBytes-sourceBytes {
+			return nil, nil, fmt.Errorf("source signing repository exceeds the %d-byte cumulative size limit", maxEncryptedSigningBytes)
+		}
+		sourceBytes += info.Size()
+	}
+	var readBytes int64
 	read := func(relPath string, accept func([]byte) bool) error {
 		data, err := root.ReadFileLimited(relPath, maxOpenSSLImportFileSize)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", relPath, err)
 		}
+		if int64(len(data)) > maxEncryptedSigningBytes-readBytes {
+			return fmt.Errorf("source signing repository exceeds the %d-byte cumulative size limit", maxEncryptedSigningBytes)
+		}
+		readBytes += int64(len(data))
 		if _, err := signingpkg.DecryptOpenSSLRepositoryFile(data, password, accept); err != nil {
 			return fmt.Errorf("decrypt %s: %w", relPath, err)
 		}
