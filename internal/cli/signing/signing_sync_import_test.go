@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 	modernpkcs12 "software.sslmate.com/src/go-pkcs12"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/rootfs"
 	signingpkg "github.com/rudrankriyam/App-Store-Connect-CLI/internal/signing"
 )
 
@@ -67,7 +69,7 @@ type openSSLImportFixture struct {
 	profileExpiration string
 }
 
-func newOpenSSLImportFixture(t *testing.T) openSSLImportFixture {
+func newOpenSSLImportFixture(t *testing.T, profileCount int) openSSLImportFixture {
 	t.Helper()
 	dir := t.TempDir()
 	write := func(relPath string, data []byte) {
@@ -100,24 +102,31 @@ func newOpenSSLImportFixture(t *testing.T) openSSLImportFixture {
 	write("certs/development/CERT2.p12", encryptOpenSSLV2(t, identity))
 
 	profileExpiration := time.Now().Add(12 * time.Hour).UTC().Truncate(time.Second)
-	payload, err := plist.Marshal(map[string]any{
-		"Name":                        "App Store com.example.app",
-		"UUID":                        importProfileUUID,
-		"TeamIdentifier":              []string{"TEAM123"},
-		"ApplicationIdentifierPrefix": []string{"TEAM123"},
-		"Platform":                    []string{"iOS"},
-		"ExpirationDate":              profileExpiration,
-		"DeveloperCertificates":       [][]byte{distribution.Raw},
-		"Entitlements": map[string]any{
-			"application-identifier": "TEAM123.com.example.app",
-			"get-task-allow":         false,
-		},
-	}, plist.XMLFormat)
-	if err != nil {
-		t.Fatal(err)
+	for index := range profileCount {
+		bundleID, uuid := "com.example.app", importProfileUUID
+		if index > 0 {
+			bundleID = fmt.Sprintf("com.example.app%d", index)
+			uuid = fmt.Sprintf("6f1c2a3b-4d5e-4f60-8a7b-%012d", index)
+		}
+		payload, err := plist.Marshal(map[string]any{
+			"Name":                        "App Store " + bundleID,
+			"UUID":                        uuid,
+			"TeamIdentifier":              []string{"TEAM123"},
+			"ApplicationIdentifierPrefix": []string{"TEAM123"},
+			"Platform":                    []string{"iOS"},
+			"ExpirationDate":              profileExpiration,
+			"DeveloperCertificates":       [][]byte{distribution.Raw},
+			"Entitlements": map[string]any{
+				"application-identifier": "TEAM123." + bundleID,
+				"get-task-allow":         false,
+			},
+		}, plist.XMLFormat)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write("profiles/appstore/AppStore_"+bundleID+".mobileprovision",
+			encryptOpenSSLV2(t, mustSignedCMS(t, payload, distribution, distributionKey)))
 	}
-	write("profiles/appstore/AppStore_com.example.app.mobileprovision",
-		encryptOpenSSLV2(t, mustSignedCMS(t, payload, distribution, distributionKey)))
 	write("README.md", []byte("unencrypted"))
 
 	return openSSLImportFixture{
@@ -148,7 +157,7 @@ func runSigningSyncImport(t *testing.T, args ...string) (string, string, error) 
 }
 
 func TestSigningSyncImportWritesPullableStore(t *testing.T) {
-	fixture := newOpenSSLImportFixture(t)
+	fixture := newOpenSSLImportFixture(t, 1)
 	remoteURL, remotePath := newSigningSyncBareRemote(t)
 	passwordFile := filepath.Join(t.TempDir(), "password")
 	writePrivateTestFile(t, passwordFile, []byte(importDestinationPassword))
@@ -217,7 +226,7 @@ func TestSigningSyncImportWritesPullableStore(t *testing.T) {
 }
 
 func TestSigningSyncImportDryRunListsWithoutDestination(t *testing.T) {
-	fixture := newOpenSSLImportFixture(t)
+	fixture := newOpenSSLImportFixture(t, 1)
 	t.Setenv(signingSyncPasswordEnvVar, "")
 	stdout, stderr, err := runSigningSyncImport(t, "--source", fixture.dir, "--source-password", importSourcePassword,
 		"--repo", "file:///nonexistent/signing.git", "--dry-run", "--output", "json")
@@ -250,6 +259,80 @@ func TestSigningSyncImportDryRunListsWithoutDestination(t *testing.T) {
 	}
 	if len(result.Files) != 6 {
 		t.Fatalf("planned files = %v", result.Files)
+	}
+}
+
+func TestSigningSyncImportDryRunRejectsExpandedArtifactLimit(t *testing.T) {
+	fixture := newOpenSSLImportFixture(t, 127)
+	stdout, _, err := runSigningSyncImport(t, "--source", fixture.dir, "--source-password", importSourcePassword,
+		"--repo", "file:///nonexistent/signing.git", "--dry-run", "--output", "json")
+	wantErr := "signing sync import: imported signing repository would contain 258 files; limit is 256"
+	if err == nil || err.Error() != wantErr {
+		t.Fatalf("error = %v, want %q", err, wantErr)
+	}
+	if stdout != "" {
+		t.Fatalf("rejected import emitted a success receipt: %s", stdout)
+	}
+}
+
+func TestSigningSyncImportPlanCountsExistingPaths(t *testing.T) {
+	fixture := newOpenSSLImportFixture(t, 1)
+	root, err := rootfs.New(fixture.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	certificates, profiles, err := loadOpenSSLImportSource(root, importSourcePassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := certificates[0].cert.NotBefore.Add(time.Hour)
+	writes, err := planOpenSSLImportWrites(certificates, profiles, nil, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &signingpkg.GitStore{LocalDir: t.TempDir()}
+	paths, err := applyOpenSSLImportWrites(store, writes, importDestinationPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, _, err := loadAndValidateSigningFiles(store, paths, importDestinationPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name       string
+		otherFiles int
+		reimport   bool
+		wantErr    string
+	}{
+		{name: "new artifacts fit", otherFiles: 250},
+		{name: "existing and new exceed limit", otherFiles: 251, wantErr: "imported signing repository would contain 257 files; limit is 256"},
+		{name: "reimport at limit", otherFiles: 250, reimport: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var existing []decryptedSigningFile
+			for index := range test.otherFiles {
+				existing = append(existing, decryptedSigningFile{RelativePath: fmt.Sprintf("notes/%d.txt", index), Plaintext: []byte("retained")})
+			}
+			if test.reimport {
+				existing = append(existing, stored...)
+			}
+			planned, err := planOpenSSLImportWrites(certificates, profiles, existing, now)
+			if test.wantErr != "" {
+				if err == nil || err.Error() != test.wantErr {
+					t.Fatalf("error = %v, want %q", err, test.wantErr)
+				}
+				return
+			}
+			wantWrites := 6
+			if test.reimport {
+				wantWrites = 3
+			}
+			if err != nil || len(planned) != wantWrites {
+				t.Fatalf("planned %d artifacts, error = %v; want %d", len(planned), err, wantWrites)
+			}
+		})
 	}
 }
 
@@ -295,7 +378,7 @@ func TestSigningSyncImportFailuresWriteNothing(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fixture := newOpenSSLImportFixture(t)
+			fixture := newOpenSSLImportFixture(t, 1)
 			if test.mutate != nil {
 				test.mutate(t, fixture)
 			}

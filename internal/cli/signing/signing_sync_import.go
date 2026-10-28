@@ -462,8 +462,10 @@ func newOpenSSLImportProfile(relPath string, content []byte, profile *identityMo
 func planOpenSSLImportWrites(certificates []openSSLImportCertificate, profiles []openSSLImportProfile, existing []decryptedSigningFile, now time.Time) ([]openSSLImportWrite, error) {
 	storedCertificates := make(map[string]string)
 	storedProfiles := make(map[string]decryptedSigningFile)
+	destinationPaths := make(map[string]struct{}, len(existing))
 	for _, file := range existing {
 		relPath := canonicalSigningPullPath(file.RelativePath)
+		destinationPaths[relPath] = struct{}{}
 		switch {
 		case strings.HasPrefix(relPath, "certs/") && strings.HasSuffix(strings.ToLower(relPath), ".cer"):
 			if cert, err := x509.ParseCertificate(file.Plaintext); err == nil {
@@ -582,6 +584,12 @@ func planOpenSSLImportWrites(certificates []openSSLImportCertificate, profiles [
 	paths := openSSLImportWritePaths(writes)
 	if err := signingpkg.ValidateEncryptedRepositoryPaths(paths); err != nil {
 		return nil, err
+	}
+	for _, relPath := range paths {
+		destinationPaths[canonicalSigningPullPath(relPath)] = struct{}{}
+	}
+	if len(destinationPaths) > maxEncryptedSigningFiles {
+		return nil, fmt.Errorf("imported signing repository would contain %d files; limit is %d", len(destinationPaths), maxEncryptedSigningFiles)
 	}
 	return writes, nil
 }
